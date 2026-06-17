@@ -9,6 +9,7 @@ import { setUserRole } from '@/app/actions/users'
 import type { ManagedUser } from '@/app/actions/users'
 import type { Role } from '@/lib/auth-server'
 import { cn } from '@/lib/utils'
+import { successToast } from '@/lib/toast'
 
 const ROLES: { value: Role; label: string; icon: typeof UserIcon; tone: string }[] = [
   { value: 'player', label: 'Player', icon: UserIcon, tone: 'text-muted-foreground' },
@@ -65,6 +66,7 @@ export function UserManagement({
         await setUserRole(target.id, role)
         setSavedId(target.id)
         setTimeout(() => setSavedId(null), 1500)
+        successToast('Role updated', `${target.name ?? target.email} is now ${roleMeta(role).label}`)
       } catch (e) {
         // revert on failure
         setUsers((prev) => prev.map((u) => (u.id === target.id ? { ...u, role: previous } : u)))

@@ -6,6 +6,7 @@ import { motion } from 'framer-motion'
 import { X, Check, MapPin, User, FileText, Loader2 } from 'lucide-react'
 import { authClient } from '@/lib/auth-client'
 import { cn } from '@/lib/utils'
+import { successToast } from '@/lib/toast'
 
 const avatarPresets = [
   '/images/avatars/avatar-1.png',
@@ -60,6 +61,7 @@ export function ProfileEditModal({
     }
     onSaved(values)
     onClose()
+    successToast('Profile updated')
   }
 
   return (

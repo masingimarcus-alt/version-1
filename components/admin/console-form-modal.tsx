@@ -5,6 +5,7 @@ import { motion } from 'framer-motion'
 import { X, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createRentalConsole, updateRentalConsole } from '@/app/actions/rentals'
+import { successToast } from '@/lib/toast'
 
 export type ConsoleFormValues = {
   id: string
@@ -75,6 +76,7 @@ export function ConsoleFormModal({
       } else {
         await createRentalConsole(values)
       }
+      successToast(isEdit ? 'Console updated' : 'Console added', values.name)
       onSaved(values)
       onClose()
     } catch (e) {

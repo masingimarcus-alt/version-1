@@ -7,6 +7,7 @@ import { Clock, Calendar, CheckCircle2, XCircle, Calculator, Minus, Plus, MapPin
 import { PageShell } from '@/components/page-shell'
 import { getRentalConsoles } from '@/app/actions/rentals'
 import { cn, formatNumber } from '@/lib/utils'
+import { successToast } from '@/lib/toast'
 
 type Console = {
   id: string
@@ -201,7 +202,7 @@ function RentalModal({ console: c, onClose }: { console: Console; onClose: () =>
 
         <motion.button
           whileTap={{ scale: 0.97 }}
-          onClick={() => setBooked(true)}
+          onClick={() => { setBooked(true); successToast('Booking confirmed', `${c.name} for ${hours} ${unit}`) }}
           disabled={deliveryOption === 'delivery' && !address.trim()}
           className={cn('w-full py-4 rounded-2xl font-bold text-sm transition-all',
             deliveryOption === 'pickup' || address.trim()

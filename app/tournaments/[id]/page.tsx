@@ -9,6 +9,7 @@ import { ArrowLeft, Users, Zap, Calendar, Shield, List, Trophy, Clock, CheckCirc
 import { PageShell } from '@/components/page-shell'
 import { tournaments, leaderboard } from '@/lib/data'
 import { cn } from '@/lib/utils'
+import { successToast } from '@/lib/toast'
 
 const tabs = ['Overview', 'Bracket', 'Players', 'Schedule']
 
@@ -237,8 +238,8 @@ export default function TournamentDetailPage({ params }: { params: Promise<{ id:
         ) : (
           <motion.button
             whileTap={{ scale: 0.97 }}
-            onClick={() => setJoined(true)}
-            disabled={slotsLeft === 0}
+                onClick={() => { setJoined(true); successToast('Joined tournament', tournament.name) }}
+                disabled={slotsLeft === 0}
             className={cn(
               'w-full py-4 rounded-2xl font-bold text-sm transition-all',
               slotsLeft === 0

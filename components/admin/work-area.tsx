@@ -30,6 +30,7 @@ import {
 } from '@/app/actions/work'
 import { getNotifications, type AppNotification } from '@/app/actions/notifications'
 import { cn, formatNumber } from '@/lib/utils'
+import { successToast } from '@/lib/toast'
 
 type Tab = 'calendar' | 'finance' | 'messages' | 'updates'
 
@@ -146,6 +147,7 @@ function CalendarTab() {
       setEvents((prev) => [...prev, row as WorkEventRow].sort((a, b) => a.eventDate.localeCompare(b.eventDate)))
       setForm({ title: '', eventDate: '', eventTime: '', category: 'general', notes: '' })
       setShowForm(false)
+      successToast('Event added to calendar')
     })
   }
 
@@ -153,6 +155,7 @@ function CalendarTab() {
     startTransition(async () => {
       await deleteWorkEvent(id)
       setEvents((prev) => prev.filter((e) => e.id !== id))
+      successToast('Event removed')
     })
   }
 
@@ -364,6 +367,7 @@ function MessagesTab() {
     startTransition(async () => {
       const row = await sendWorkMessage(body)
       setMessages((prev) => [...prev, row as MessageRow])
+      successToast('Message sent')
     })
   }
 

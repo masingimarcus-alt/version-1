@@ -8,6 +8,7 @@ import { motion } from 'framer-motion'
 import { authClient } from '@/lib/auth-client'
 import { Mail, Lock, User, Eye, EyeOff, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { successToast } from '@/lib/toast'
 
 // Map Better Auth error codes to user-friendly messages
 const ERROR_MESSAGES: Record<string, string> = {
@@ -82,6 +83,7 @@ export function AuthForm({ mode }: { mode: 'sign-in' | 'sign-up' }) {
         return
       }
 
+      successToast(isSignUp ? 'Account created' : 'Signed in successfully')
       router.push('/')
       router.refresh()
     } catch (err: unknown) {

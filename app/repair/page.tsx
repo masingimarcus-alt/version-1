@@ -6,6 +6,7 @@ import { Wrench, ChevronRight, CheckCircle2, Clock, Search, Headphones, Cpu, Gam
 import { PageShell } from '@/components/page-shell'
 import { repairCategories, repairRequests } from '@/lib/data'
 import { cn } from '@/lib/utils'
+import { successToast } from '@/lib/toast'
 
 const deviceIcons: Record<string, typeof Wrench> = {
   'gamepad-2': Gamepad2,
@@ -34,6 +35,7 @@ export default function RepairPage() {
   const handleSubmit = () => {
     if (!selectedCategory || !selectedService) return
     setSubmitted(true)
+    successToast('Repair request submitted', `${category?.name} — ${selectedService}`)
   }
 
   return (

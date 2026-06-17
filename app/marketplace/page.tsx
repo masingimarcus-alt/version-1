@@ -8,6 +8,7 @@ import { PageShell } from '@/components/page-shell'
 import { LogoHeader } from '@/components/logo-header'
 import { marketplaceItems } from '@/lib/data'
 import { cn, formatNumber } from '@/lib/utils'
+import { successToast } from '@/lib/toast'
 
 const categories = ['All', 'Consoles', 'Controllers', 'Games', 'Accessories']
 const conditions = ['New', 'Like New', 'Excellent', 'Good', 'Fair']
@@ -76,6 +77,7 @@ function ProductModal({ item, onClose }: { item: Item; onClose: () => void }) {
           </div>
           <motion.button
             whileTap={{ scale: 0.95 }}
+            onClick={() => successToast('Seller contacted', `We sent your interest in ${item.name}`)}
             className="flex items-center gap-2 bg-[var(--blue)] text-[#050505] px-5 py-3 rounded-xl font-bold text-sm"
           >
             <ShoppingCart size={16} />
@@ -98,6 +100,7 @@ function SellForm({ onSuccess }: { onSuccess: () => void }) {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    successToast('Listing published', formData.title || undefined)
     onSuccess()
   }
 
