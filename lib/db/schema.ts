@@ -115,3 +115,67 @@ export const workEvent = pgTable('work_event', {
   notes: text('notes'),
   createdAt: timestamp('createdAt').defaultNow(),
 })
+
+// --- Tournament system tables ----------------------------------------------
+
+export const tournament = pgTable('tournament', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  description: text('description'),
+  game: text('game').default('EA Sports FC 26'),
+  platform: text('platform'),
+  // 'draft' | 'registration' | 'in_progress' | 'completed' | 'cancelled'
+  status: text('status').default('draft'),
+  // 'single_elimination' | 'double_elimination'
+  format: text('format').default('single_elimination'),
+  maxParticipants: integer('maxParticipants').default(16),
+  prizePool: text('prizePool'),
+  logoUrl: text('logoUrl'),
+  cover: text('cover'),
+  rules: text('rules'),
+  registrationDeadline: text('registrationDeadline'),
+  startDate: text('startDate'),
+  endDate: text('endDate'),
+  createdBy: text('createdBy').references(() => user.id, { onDelete: 'set null' }),
+  createdAt: timestamp('createdAt').defaultNow(),
+  updatedAt: timestamp('updatedAt').defaultNow(),
+})
+
+export const tournamentParticipant = pgTable('tournament_participant', {
+  id: text('id').primaryKey(),
+  tournamentId: text('tournamentId')
+    .notNull()
+    .references(() => tournament.id, { onDelete: 'cascade' }),
+  userId: text('userId').references(() => user.id, { onDelete: 'set null' }),
+  name: text('name').notNull(),
+  email: text('email'),
+  platform: text('platform'),
+  // 'confirmed' | 'pending'
+  status: text('status').default('confirmed'),
+  checkedIn: boolean('checkedIn').default(false),
+  seed: integer('seed'),
+  createdAt: timestamp('createdAt').defaultNow(),
+})
+
+export const tournamentMatch = pgTable('tournament_match', {
+  id: text('id').primaryKey(),
+  tournamentId: text('tournamentId')
+    .notNull()
+    .references(() => tournament.id, { onDelete: 'cascade' }),
+  // 'winners' | 'losers' | 'grand_final'
+  bracket: text('bracket').default('winners'),
+  round: integer('round').notNull(),
+  matchNumber: integer('matchNumber').notNull(),
+  participant1Id: text('participant1Id'),
+  participant2Id: text('participant2Id'),
+  score1: integer('score1'),
+  score2: integer('score2'),
+  winnerId: text('winnerId'),
+  nextMatchId: text('nextMatchId'),
+  nextMatchSlot: integer('nextMatchSlot'),
+  loserNextMatchId: text('loserNextMatchId'),
+  loserNextMatchSlot: integer('loserNextMatchSlot'),
+  // 'pending' | 'completed'
+  status: text('status').default('pending'),
+  createdAt: timestamp('createdAt').defaultNow(),
+})

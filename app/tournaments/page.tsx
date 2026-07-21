@@ -2,24 +2,32 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Trophy, Users, Zap, Clock, ChevronRight, Search, Crown,
   TrendingUp, TrendingDown, Minus, Wrench, CheckCircle2,
-  Gamepad2, Gamepad, Cpu, Headphones,
+  Gamepad2, Gamepad, Cpu, Headphones, Loader2,
 } from 'lucide-react'
 import { PageShell } from '@/components/page-shell'
-import { tournaments, leaderboard, repairCategories, repairRequests } from '@/lib/data'
+import { leaderboard, repairCategories, repairRequests } from '@/lib/data'
+import { getPublicTournaments, type Tournament } from '@/app/actions/tournaments'
 import { cn, formatNumber } from '@/lib/utils'
 
-/* ─── shared tournament status config ─── */
+/* ─── shared tournament status config (DB statuses) ─── */
 const statusConfig: Record<string, { label: string; color: string; bg: string; dot: string }> = {
-  live:     { label: 'Live',     color: 'text-red-400',   bg: 'bg-red-400/10',   dot: 'bg-red-400' },
-  upcoming: { label: 'Soon',     color: 'text-amber-400', bg: 'bg-amber-400/10', dot: 'bg-amber-400' },
-  full:     { label: 'Full',     color: 'text-muted-foreground', bg: 'bg-[var(--surface-3)]', dot: 'bg-gray-500' },
-  finished: { label: 'Finished', color: 'text-muted-foreground', bg: 'bg-[var(--surface-3)]', dot: 'bg-gray-500' },
+  in_progress:  { label: 'Live',         color: 'text-red-400',          bg: 'bg-red-400/10',        dot: 'bg-red-400' },
+  registration: { label: 'Open',         color: 'text-amber-400',        bg: 'bg-amber-400/10',      dot: 'bg-amber-400' },
+  completed:    { label: 'Finished',     color: 'text-muted-foreground', bg: 'bg-[var(--surface-3)]', dot: 'bg-gray-500' },
+  cancelled:    { label: 'Cancelled',    color: 'text-muted-foreground', bg: 'bg-[var(--surface-3)]', dot: 'bg-gray-500' },
 }
+
+const formatLabel: Record<string, string> = {
+  single_elimination: 'Single Elimination',
+  double_elimination: 'Double Elimination',
+}
+
+const FALLBACK_COVER = '/images/hero-tournament.png'
 
 /* ─── leaderboard trophy ─── */
 const trophyColors = [
@@ -43,20 +51,33 @@ const repairStatusConfig: Record<string, { label: string; color: string; bg: str
 const timelineSteps = ['Received', 'Diagnosing', 'Repairing', 'Quality Check', 'Ready']
 
 const topLevelTabs = ['Tournaments', 'Leaderboard', 'Repair']
-const tournamentFilters = ['All', 'Live', 'Upcoming', 'Free Entry']
+const tournamentFilters = ['All', 'Live', 'Open', 'Finished']
+
+type PublicTournament = Tournament & { participantCount: number }
 
 /* ═══════════════════════════════════════════════════════════════════════ */
 
 function TournamentsTab() {
   const [activeFilter, setActiveFilter] = useState('All')
   const [search, setSearch] = useState('')
+  const [tournaments, setTournaments] = useState<PublicTournament[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    getPublicTournaments().then((data) => {
+      setTournaments(data as PublicTournament[])
+      setLoading(false)
+    })
+  }, [])
 
   const filtered = tournaments.filter((t) => {
-    const matchSearch = t.name.toLowerCase().includes(search.toLowerCase()) || t.game.toLowerCase().includes(search.toLowerCase())
+    const matchSearch =
+      t.name.toLowerCase().includes(search.toLowerCase()) ||
+      (t.game ?? '').toLowerCase().includes(search.toLowerCase())
     if (activeFilter === 'All') return matchSearch
-    if (activeFilter === 'Live') return matchSearch && t.status === 'live'
-    if (activeFilter === 'Upcoming') return matchSearch && t.status === 'upcoming'
-    if (activeFilter === 'Free Entry') return matchSearch && t.entryFee === 'Free'
+    if (activeFilter === 'Live') return matchSearch && t.status === 'in_progress'
+    if (activeFilter === 'Open') return matchSearch && t.status === 'registration'
+    if (activeFilter === 'Finished') return matchSearch && t.status === 'completed'
     return matchSearch
   })
 
@@ -90,90 +111,103 @@ function TournamentsTab() {
         ))}
       </div>
 
-      {/* Cards */}
-      <AnimatePresence mode="wait">
-        {filtered.map((t, i) => {
-          const status = statusConfig[t.status]
-          const slotsLeft = t.maxPlayers - t.registeredPlayers
-          const fillPercent = (t.registeredPlayers / t.maxPlayers) * 100
-          return (
-            <motion.div
-              key={t.id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ delay: i * 0.07 }}
-            >
-              <Link href={`/tournaments/${t.id}`}>
-                <motion.div whileTap={{ scale: 0.98 }} className="glass rounded-3xl overflow-hidden card-hover">
-                  <div className="relative h-44">
-                    <Image src={t.cover} alt={t.name} fill className="object-cover" />
-                    <div className="absolute inset-0 bg-gradient-to-t from-[#0d0d0f] via-[#0d0d0f]/40 to-transparent" />
-                    <div className={`absolute top-3 left-3 flex items-center gap-1.5 px-2.5 py-1 rounded-full ${status.bg}`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${status.dot} ${t.status === 'live' ? 'pulse-dot' : ''}`} />
-                      <span className={`text-[11px] font-bold ${status.color}`}>{status.label}</span>
-                    </div>
-                    <div className="absolute top-3 right-3 px-2.5 py-1 rounded-full glass">
-                      <span className="text-[11px] font-semibold text-white">{t.entryFee}</span>
-                    </div>
-                    <div className="absolute bottom-3 left-3 flex items-center gap-1.5">
-                      <Zap size={13} className="text-[var(--blue)]" />
-                      <span className="text-lg font-black text-white">{t.prize}</span>
-                    </div>
-                  </div>
-                  <div className="p-4">
-                    <div className="flex items-start justify-between gap-2 mb-2">
-                      <div>
-                        <h3 className="text-base font-bold text-white text-balance leading-tight">{t.name}</h3>
-                        <span className="text-xs text-muted-foreground">{t.game} · {t.platform}</span>
-                      </div>
-                      <div className="w-8 h-8 rounded-xl bg-[var(--blue-dim)] flex items-center justify-center shrink-0 mt-0.5">
-                        <ChevronRight size={15} className="text-[var(--blue)]" />
-                      </div>
-                    </div>
-                    <div className="mt-3">
-                      <div className="flex items-center justify-between mb-1.5">
-                        <div className="flex items-center gap-1.5">
-                          <Users size={12} className="text-muted-foreground" />
-                          <span className="text-xs text-muted-foreground">{t.registeredPlayers} / {t.maxPlayers} players</span>
-                        </div>
-                        {slotsLeft > 0
-                          ? <span className="text-xs font-semibold text-amber-400">{slotsLeft} slots left</span>
-                          : <span className="text-xs font-semibold text-muted-foreground">Full</span>
-                        }
-                      </div>
-                      <div className="h-1.5 rounded-full bg-[var(--surface-3)] overflow-hidden">
-                        <motion.div
-                          className="h-full rounded-full bg-[var(--blue)]"
-                          initial={{ width: 0 }}
-                          animate={{ width: `${fillPercent}%` }}
-                          transition={{ duration: 0.8, delay: 0.2 + i * 0.07 }}
-                        />
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3 mt-3">
-                      <div className="flex items-center gap-1.5">
-                        <Clock size={11} className="text-muted-foreground" />
-                        <span className="text-[11px] text-muted-foreground">
-                          {new Date(t.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                        </span>
-                      </div>
-                      <span className="text-muted-foreground text-[11px]">·</span>
-                      <span className="text-[11px] text-muted-foreground">{t.format}</span>
-                    </div>
-                  </div>
-                </motion.div>
-              </Link>
-            </motion.div>
-          )
-        })}
-      </AnimatePresence>
-
-      {filtered.length === 0 && (
-        <div className="text-center py-16">
-          <Trophy size={40} className="text-muted-foreground mx-auto mb-3 opacity-30" />
-          <p className="text-muted-foreground text-sm">No tournaments found</p>
+      {loading ? (
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="w-6 h-6 animate-spin text-[var(--blue)]" />
         </div>
+      ) : (
+        <>
+          {/* Cards */}
+          <AnimatePresence mode="wait">
+            {filtered.map((t, i) => {
+              const status = statusConfig[t.status ?? 'registration'] ?? statusConfig.registration
+              const max = t.maxParticipants ?? 0
+              const slotsLeft = Math.max(max - t.participantCount, 0)
+              const fillPercent = max > 0 ? Math.min((t.participantCount / max) * 100, 100) : 0
+              const cover = t.cover || t.logoUrl || FALLBACK_COVER
+              return (
+                <motion.div
+                  key={t.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ delay: i * 0.07 }}
+                >
+                  <Link href={`/tournaments/${t.id}`}>
+                    <motion.div whileTap={{ scale: 0.98 }} className="glass rounded-3xl overflow-hidden card-hover">
+                      <div className="relative h-44">
+                        <Image src={cover} alt={t.name} fill className="object-cover" />
+                        <div className="absolute inset-0 bg-gradient-to-t from-[#0d0d0f] via-[#0d0d0f]/40 to-transparent" />
+                        <div className={`absolute top-3 left-3 flex items-center gap-1.5 px-2.5 py-1 rounded-full ${status.bg}`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${status.dot} ${t.status === 'in_progress' ? 'pulse-dot' : ''}`} />
+                          <span className={`text-[11px] font-bold ${status.color}`}>{status.label}</span>
+                        </div>
+                        {t.prizePool && (
+                          <div className="absolute bottom-3 left-3 flex items-center gap-1.5">
+                            <Zap size={13} className="text-[var(--blue)]" />
+                            <span className="text-lg font-black text-white">{t.prizePool}</span>
+                          </div>
+                        )}
+                      </div>
+                      <div className="p-4">
+                        <div className="flex items-start justify-between gap-2 mb-2">
+                          <div>
+                            <h3 className="text-base font-bold text-white text-balance leading-tight">{t.name}</h3>
+                            <span className="text-xs text-muted-foreground">{t.game}{t.platform ? ` · ${t.platform}` : ''}</span>
+                          </div>
+                          <div className="w-8 h-8 rounded-xl bg-[var(--blue-dim)] flex items-center justify-center shrink-0 mt-0.5">
+                            <ChevronRight size={15} className="text-[var(--blue)]" />
+                          </div>
+                        </div>
+                        <div className="mt-3">
+                          <div className="flex items-center justify-between mb-1.5">
+                            <div className="flex items-center gap-1.5">
+                              <Users size={12} className="text-muted-foreground" />
+                              <span className="text-xs text-muted-foreground">{t.participantCount} / {max} players</span>
+                            </div>
+                            {slotsLeft > 0
+                              ? <span className="text-xs font-semibold text-amber-400">{slotsLeft} slots left</span>
+                              : <span className="text-xs font-semibold text-muted-foreground">Full</span>
+                            }
+                          </div>
+                          <div className="h-1.5 rounded-full bg-[var(--surface-3)] overflow-hidden">
+                            <motion.div
+                              className="h-full rounded-full bg-[var(--blue)]"
+                              initial={{ width: 0 }}
+                              animate={{ width: `${fillPercent}%` }}
+                              transition={{ duration: 0.8, delay: 0.2 + i * 0.07 }}
+                            />
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3 mt-3">
+                          {t.startDate && (
+                            <>
+                              <div className="flex items-center gap-1.5">
+                                <Clock size={11} className="text-muted-foreground" />
+                                <span className="text-[11px] text-muted-foreground">
+                                  {new Date(t.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                </span>
+                              </div>
+                              <span className="text-muted-foreground text-[11px]">·</span>
+                            </>
+                          )}
+                          <span className="text-[11px] text-muted-foreground">{formatLabel[t.format ?? 'single_elimination']}</span>
+                        </div>
+                      </div>
+                    </motion.div>
+                  </Link>
+                </motion.div>
+              )
+            })}
+          </AnimatePresence>
+
+          {filtered.length === 0 && (
+            <div className="text-center py-16">
+              <Trophy size={40} className="text-muted-foreground mx-auto mb-3 opacity-30" />
+              <p className="text-muted-foreground text-sm">No tournaments found</p>
+            </div>
+          )}
+        </>
       )}
     </div>
   )
@@ -289,7 +323,7 @@ function LeaderboardTab() {
   )
 }
 
-/* ═══════════════════════════════════════════════════════════════════════ */
+/* ═════════════════���═════════════════════════════════════════════════════ */
 
 function RepairTab() {
   const [step, setStep] = useState(0)
