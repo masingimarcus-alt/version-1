@@ -1,6 +1,6 @@
 'use server'
 
-import { requireAdmin } from '@/lib/auth-server'
+import { requireAdmin, getCurrentUser } from '@/lib/auth-server'
 import { db } from '@/lib/db'
 import { tournament, tournamentParticipant, tournamentMatch } from '@/lib/db/schema'
 import { eq, desc, ne, and, asc } from 'drizzle-orm'
@@ -546,6 +546,88 @@ function revalidatePaths(tournamentId: string) {
   revalidatePath(`/admin/tournaments/${tournamentId}`)
   revalidatePath('/tournaments')
   revalidatePath(`/tournaments/${tournamentId}`)
+}
+
+/* ──────────────────── Public self-registration ──────────────────── */
+
+/** Returns whether the current signed-in user has joined a tournament. */
+export async function getJoinState(
+  tournamentId: string,
+): Promise<{ signedIn: boolean; joined: boolean }> {
+  const user = await getCurrentUser()
+  if (!user) return { signedIn: false, joined: false }
+  const [row] = await db
+    .select()
+    .from(tournamentParticipant)
+    .where(
+      and(
+        eq(tournamentParticipant.tournamentId, tournamentId),
+        eq(tournamentParticipant.userId, user.id),
+      ),
+    )
+  return { signedIn: true, joined: Boolean(row) }
+}
+
+/** Signed-in player self-registers for a tournament that is open for registration. */
+export async function joinTournament(
+  tournamentId: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const user = await getCurrentUser()
+  if (!user) return { ok: false, error: 'You must be signed in to join.' }
+
+  const [t] = await db.select().from(tournament).where(eq(tournament.id, tournamentId))
+  if (!t) return { ok: false, error: 'Tournament not found.' }
+  if (t.status !== 'registration') {
+    return { ok: false, error: 'Registration is not open for this tournament.' }
+  }
+
+  const existingParticipants = await db
+    .select()
+    .from(tournamentParticipant)
+    .where(eq(tournamentParticipant.tournamentId, tournamentId))
+
+  if (existingParticipants.some((p) => p.userId === user.id)) {
+    return { ok: true } // already joined
+  }
+  if (t.maxParticipants && existingParticipants.length >= t.maxParticipants) {
+    return { ok: false, error: 'This tournament is full.' }
+  }
+
+  await db.insert(tournamentParticipant).values({
+    id: `part-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    tournamentId,
+    userId: user.id,
+    name: user.name || user.email,
+    email: user.email,
+    platform: t.platform ?? null,
+    status: 'confirmed',
+  })
+  revalidatePaths(tournamentId)
+  return { ok: true }
+}
+
+/** Signed-in player withdraws from a tournament before it starts. */
+export async function leaveTournament(
+  tournamentId: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const user = await getCurrentUser()
+  if (!user) return { ok: false, error: 'You must be signed in.' }
+
+  const [t] = await db.select().from(tournament).where(eq(tournament.id, tournamentId))
+  if (t && (t.status === 'in_progress' || t.status === 'completed')) {
+    return { ok: false, error: 'Cannot withdraw once the tournament has started.' }
+  }
+
+  await db
+    .delete(tournamentParticipant)
+    .where(
+      and(
+        eq(tournamentParticipant.tournamentId, tournamentId),
+        eq(tournamentParticipant.userId, user.id),
+      ),
+    )
+  revalidatePaths(tournamentId)
+  return { ok: true }
 }
 
 /* ─────────────────────────── Scoring ─────────────────────────── */
