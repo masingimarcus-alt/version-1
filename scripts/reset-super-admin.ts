@@ -3,19 +3,44 @@ import { pool } from '@/lib/db'
 
 const EMAIL = 'masingimarcus@gmail.com'
 const PASSWORD = 'SuperAdmin@2026!'
+const NAME = 'Super Admin'
 
 async function main() {
   // Use Better Auth's own password hasher so the format matches verification.
   const ctx = await auth.$context
   const hash = await ctx.password.hash(PASSWORD)
 
-  const userRes = await pool.query('SELECT id FROM public."user" WHERE email = $1', [EMAIL])
-  if (userRes.rowCount === 0) {
-    throw new Error(`User ${EMAIL} not found`)
-  }
-  const userId = userRes.rows[0].id as string
+  // 1. Demote any existing super admins so there is only ever one.
+  await pool.query(
+    `UPDATE public."user" SET role = 'admin' WHERE role = 'super_admin' AND email <> $1`,
+    [EMAIL],
+  )
 
-  // Ensure a credential (email/password) account exists and has the new hash.
+  // 2. Find or create the target user.
+  let userId: string
+  const userRes = await pool.query('SELECT id FROM public."user" WHERE email = $1', [EMAIL])
+
+  if (userRes.rowCount && userRes.rowCount > 0) {
+    userId = userRes.rows[0].id as string
+    await pool.query(
+      `UPDATE public."user"
+       SET role = 'super_admin', name = COALESCE(NULLIF(name, ''), $2), "emailVerified" = true, "updatedAt" = now()
+       WHERE id = $1`,
+      [userId, NAME],
+    )
+    console.log('[v0] Updated existing user to super_admin')
+  } else {
+    const insertRes = await pool.query(
+      `INSERT INTO public."user" (id, name, email, "emailVerified", role, "createdAt", "updatedAt")
+       VALUES (gen_random_uuid(), $1, $2, true, 'super_admin', now(), now())
+       RETURNING id`,
+      [NAME, EMAIL],
+    )
+    userId = insertRes.rows[0].id as string
+    console.log('[v0] Created new super_admin user')
+  }
+
+  // 3. Ensure a credential (email/password) account exists with the new hash.
   const accRes = await pool.query(
     `SELECT id FROM public."account" WHERE "userId" = $1 AND "providerId" = 'credential'`,
     [userId],
@@ -36,10 +61,7 @@ async function main() {
     console.log('[v0] Created new credential account')
   }
 
-  // Make sure role is super_admin.
-  await pool.query(`UPDATE public."user" SET role = 'super_admin' WHERE id = $1`, [userId])
-
-  console.log('[v0] Done. Super admin password reset for', EMAIL)
+  console.log('[v0] Done. Super admin ready:', EMAIL)
   await pool.end()
 }
 

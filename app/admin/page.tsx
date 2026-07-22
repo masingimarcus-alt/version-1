@@ -1,13 +1,15 @@
 'use client'
 
-import { useState, useEffect, useTransition } from 'react'
+import { useState, useEffect, useTransition, Suspense } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ArrowLeft, BarChart2, Trophy, Users, ShoppingBag, Plus, Edit2, Trash2, CheckCircle2, XCircle, Eye, Shield, QrCode, Gamepad2, Loader2 } from 'lucide-react'
-import { tournaments, leaderboard, marketplaceItems } from '@/lib/data'
+import { ArrowLeft, BarChart2, Trophy, Users, ShoppingBag, Plus, Edit2, Trash2, CheckCircle2, XCircle, Eye, Shield, QrCode, Gamepad2, Loader2, Calendar, Settings2, FileEdit, Zap } from 'lucide-react'
+import { leaderboard, marketplaceItems } from '@/lib/data'
 import { AnimatedCounter } from '@/components/animated-counter'
 import { getRentalConsoles, toggleConsoleAvailability, deleteRentalConsole } from '@/app/actions/rentals'
+import { getAdminTournaments, deleteTournament } from '@/app/actions/tournaments'
 import { getViewerRole } from '@/app/actions/users'
 import { ConsoleFormModal, type ConsoleFormValues } from '@/components/admin/console-form-modal'
 import { ProfileEditModal, type ProfileEditValues } from '@/components/profile/profile-edit-modal'
@@ -29,8 +31,39 @@ type RentalConsole = {
   features: string[] | null
 }
 
-export default function AdminPage() {
-  const [activeSection, setActiveSection] = useState('Overview')
+type AdminTournament = {
+  id: string
+  name: string
+  status: string | null
+  cover: string | null
+  logoUrl: string | null
+  prizePool: string | null
+  startDate: string | null
+  maxParticipants: number | null
+  participantCount: number
+}
+
+type TournamentStats = {
+  total: number
+  active: number
+  openRegistration: number
+  drafts: number
+}
+
+const tournamentStatusBadge: Record<string, { label: string; className: string }> = {
+  draft: { label: 'Draft', className: 'bg-[var(--surface-3)] text-muted-foreground' },
+  registration: { label: 'Registration', className: 'bg-amber-400/10 text-amber-400' },
+  in_progress: { label: 'In Progress', className: 'bg-red-400/10 text-red-400' },
+  completed: { label: 'Completed', className: 'bg-emerald-400/10 text-emerald-400' },
+  cancelled: { label: 'Cancelled', className: 'bg-[var(--surface-3)] text-muted-foreground' },
+}
+
+function AdminPageInner() {
+  const searchParams = useSearchParams()
+  const initialSection = searchParams.get('section') ?? 'Overview'
+  const [activeSection, setActiveSection] = useState(
+    sections.includes(initialSection) ? initialSection : 'Overview',
+  )
   const [listingApprovals, setListingApprovals] = useState<Record<string, boolean | null>>({})
   const [consoles, setConsoles] = useState<RentalConsole[]>([])
   const [loading, setLoading] = useState(true)
@@ -40,6 +73,11 @@ export default function AdminPage() {
   const [isSuperAdmin, setIsSuperAdmin] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
   const [profileEdits, setProfileEdits] = useState<ProfileEditValues | null>(null)
+  const [adminTournaments, setAdminTournaments] = useState<AdminTournament[]>([])
+  const [tournamentStats, setTournamentStats] = useState<TournamentStats>({
+    total: 0, active: 0, openRegistration: 0, drafts: 0,
+  })
+  const [tournamentsLoading, setTournamentsLoading] = useState(true)
 
   const { data: session } = useSession()
   const sessionUser = session?.user as
@@ -50,13 +88,31 @@ export default function AdminPage() {
   const adminAvatar = profileEdits?.image ?? sessionUser?.image ?? '/images/avatars/avatar-1.png'
   const roleLabel = sessionUser?.role === 'super_admin' ? 'Super Admin' : 'Administrator'
 
+  const loadTournaments = () => {
+    getAdminTournaments().then(({ tournaments, stats }) => {
+      setAdminTournaments(tournaments as AdminTournament[])
+      setTournamentStats(stats)
+      setTournamentsLoading(false)
+    })
+  }
+
   useEffect(() => {
     getRentalConsoles().then((data) => {
       setConsoles(data as RentalConsole[])
       setLoading(false)
     })
     getViewerRole().then((role) => setIsSuperAdmin(role === 'super_admin'))
+    loadTournaments()
   }, [])
+
+  const handleDeleteTournament = (id: string) => {
+    if (!confirm('Delete this tournament? This cannot be undone.')) return
+    startTransition(async () => {
+      await deleteTournament(id)
+      setAdminTournaments((prev) => prev.filter((t) => t.id !== id))
+      loadTournaments()
+    })
+  }
 
   const approve = (id: string) => setListingApprovals((prev) => ({ ...prev, [id]: true }))
   const reject = (id: string) => setListingApprovals((prev) => ({ ...prev, [id]: false }))
@@ -171,7 +227,7 @@ export default function AdminPage() {
                 <div className="grid grid-cols-2 gap-3">
                   {[
                     { label: 'Total Players', value: 1248, icon: Users, color: 'text-[var(--blue)]', bg: 'bg-[var(--blue-dim)]' },
-                    { label: 'Active Tournaments', value: 3, icon: Trophy, color: 'text-amber-400', bg: 'bg-amber-400/10' },
+                    { label: 'Active Tournaments', value: tournamentStats.active, icon: Trophy, color: 'text-amber-400', bg: 'bg-amber-400/10' },
                     { label: 'Marketplace Listings', value: marketplaceItems.length, icon: ShoppingBag, color: 'text-purple-400', bg: 'bg-purple-400/10' },
                     { label: 'Monthly Revenue', value: 124500, icon: BarChart2, color: 'text-emerald-400', bg: 'bg-emerald-400/10', prefix: '', suffix: ' TL' },
                   ].map((s) => (
@@ -197,11 +253,11 @@ export default function AdminPage() {
                   </div>
                   <p className="text-xs text-muted-foreground mb-3">Generate check-in QR codes for active tournaments</p>
                   <div className="space-y-2">
-                    {tournaments.filter((t) => t.status === 'live' || t.status === 'upcoming').map((t) => (
+                    {adminTournaments.filter((t) => t.status === 'in_progress' || t.status === 'registration').map((t) => (
                       <div key={t.id} className="flex items-center gap-3 p-2 rounded-xl bg-[var(--surface-2)]">
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-semibold text-white truncate">{t.name}</p>
-                          <p className="text-[10px] text-muted-foreground">{t.registeredPlayers} players registered</p>
+                          <p className="text-[10px] text-muted-foreground">{t.participantCount} players registered</p>
                         </div>
                         <Link href={`/qr?type=checkin&tournament=${t.id}`}>
                           <motion.div
@@ -213,6 +269,9 @@ export default function AdminPage() {
                         </Link>
                       </div>
                     ))}
+                    {adminTournaments.filter((t) => t.status === 'in_progress' || t.status === 'registration').length === 0 && (
+                      <p className="text-[11px] text-muted-foreground text-center py-2">No active tournaments</p>
+                    )}
                   </div>
                 </div>
 
@@ -317,46 +376,112 @@ export default function AdminPage() {
             {/* ──────────────────────────── TOURNAMENTS ──────────────────────────── */}
             {activeSection === 'Tournaments' && (
               <div className="space-y-4">
-                <motion.button
-                  whileTap={{ scale: 0.97 }}
-                  className="w-full py-3 rounded-xl bg-[var(--blue)] text-[#050505] font-bold text-sm flex items-center justify-center gap-2"
-                >
-                  <Plus size={16} />
-                  Create Tournament
-                </motion.button>
+                <div>
+                  <h2 className="text-base font-black text-white">Admin Panel</h2>
+                  <p className="text-[11px] text-muted-foreground">Manage tournaments, brackets, and schedules</p>
+                </div>
 
-                {tournaments.map((t) => (
-                  <div key={t.id} className="glass rounded-2xl p-4">
-                    <div className="flex items-start gap-3">
-                      <div className="relative w-14 h-14 rounded-xl overflow-hidden shrink-0">
-                        <Image src={t.cover} alt={t.name} fill className="object-cover" />
+                {/* Stat cards */}
+                <div className="grid grid-cols-2 gap-3">
+                  {[
+                    { label: 'Total', value: tournamentStats.total, color: 'text-[var(--blue)]', bg: 'bg-[var(--blue-dim)]', icon: Trophy },
+                    { label: 'Active', value: tournamentStats.active, color: 'text-red-400', bg: 'bg-red-400/10', icon: Zap },
+                    { label: 'Open Registration', value: tournamentStats.openRegistration, color: 'text-amber-400', bg: 'bg-amber-400/10', icon: Users },
+                    { label: 'Drafts', value: tournamentStats.drafts, color: 'text-muted-foreground', bg: 'bg-[var(--surface-3)]', icon: FileEdit },
+                  ].map((s) => (
+                    <div key={s.label} className="glass rounded-2xl p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[10px] text-muted-foreground">{s.label}</span>
+                        <div className={`w-8 h-8 rounded-xl ${s.bg} flex items-center justify-center`}>
+                          <s.icon size={15} className={s.color} />
+                        </div>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-bold text-white truncate">{t.name}</p>
-                        <p className="text-xs text-muted-foreground">{t.registeredPlayers}/{t.maxPlayers} players · {t.prize}</p>
-                        <span className={cn(
-                          'text-[10px] font-semibold capitalize px-2 py-0.5 rounded-full mt-1 inline-block',
-                          t.status === 'live' ? 'bg-red-400/10 text-red-400' : t.status === 'upcoming' ? 'bg-amber-400/10 text-amber-400' : 'bg-[var(--surface-3)] text-muted-foreground'
-                        )}>
-                          {t.status}
-                        </span>
-                      </div>
+                      <p className={`text-xl font-black ${s.color}`}>{s.value}</p>
                     </div>
-                    <div className="flex items-center gap-2 mt-3 pt-3 border-t border-[var(--glass-border)]">
-                      <Link href={`/tournaments/${t.id}`} className="flex-1">
-                        <button className="w-full py-2 rounded-xl glass text-xs font-semibold text-muted-foreground flex items-center justify-center gap-1.5">
-                          <Eye size={13} /> View
-                        </button>
-                      </Link>
-                      <button className="flex-1 py-2 rounded-xl bg-[var(--blue-dim)] border border-[var(--blue)]/20 text-xs font-semibold text-[var(--blue)] flex items-center justify-center gap-1.5">
-                        <Edit2 size={13} /> Edit
-                      </button>
-                      <button className="w-10 py-2 rounded-xl bg-red-400/10 border border-red-400/20 flex items-center justify-center">
-                        <Trash2 size={13} className="text-red-400" />
-                      </button>
-                    </div>
+                  ))}
+                </div>
+
+                <Link href="/admin/tournaments/new">
+                  <motion.div
+                    whileTap={{ scale: 0.97 }}
+                    className="w-full py-3 rounded-xl bg-[var(--blue)] text-[#050505] font-bold text-sm flex items-center justify-center gap-2"
+                  >
+                    <Plus size={16} />
+                    Create Tournament
+                  </motion.div>
+                </Link>
+
+                <h3 className="text-sm font-bold text-white pt-1">All Tournaments</h3>
+
+                {tournamentsLoading ? (
+                  <div className="flex items-center justify-center py-12">
+                    <Loader2 className="w-6 h-6 animate-spin text-[var(--blue)]" />
                   </div>
-                ))}
+                ) : adminTournaments.length === 0 ? (
+                  <div className="glass rounded-2xl p-8 text-center">
+                    <Trophy size={32} className="text-muted-foreground mx-auto mb-2 opacity-40" />
+                    <p className="text-sm text-muted-foreground">No tournaments yet. Create your first one.</p>
+                  </div>
+                ) : (
+                  adminTournaments.map((t) => {
+                    const badge = tournamentStatusBadge[t.status ?? 'draft'] ?? tournamentStatusBadge.draft
+                    const image = t.cover || t.logoUrl
+                    return (
+                      <div key={t.id} className="glass rounded-2xl p-4">
+                        <div className="flex items-start gap-3">
+                          <div className="relative w-14 h-14 rounded-xl overflow-hidden shrink-0 bg-[var(--surface-2)] flex items-center justify-center">
+                            {image ? (
+                              <Image src={image} alt={t.name} fill className="object-cover" />
+                            ) : (
+                              <Trophy size={20} className="text-muted-foreground" />
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-bold text-white truncate">{t.name}</p>
+                            <div className="flex items-center gap-3 mt-1">
+                              <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                                <Users size={11} /> {t.participantCount}/{t.maxParticipants ?? '—'}
+                              </span>
+                              <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                                <Calendar size={11} />
+                                {t.startDate
+                                  ? new Date(t.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+                                  : 'TBD'}
+                              </span>
+                            </div>
+                            <span className={cn('text-[10px] font-semibold px-2 py-0.5 rounded-full mt-1.5 inline-block', badge.className)}>
+                              {badge.label}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-4 gap-2 mt-3 pt-3 border-t border-[var(--glass-border)]">
+                          <Link href={`/tournaments/${t.id}`}>
+                            <button className="w-full py-2 rounded-xl glass text-[11px] font-semibold text-muted-foreground flex items-center justify-center gap-1">
+                              <Eye size={12} /> View
+                            </button>
+                          </Link>
+                          <Link href={`/admin/tournaments/${t.id}/edit`}>
+                            <button className="w-full py-2 rounded-xl bg-[var(--blue-dim)] border border-[var(--blue)]/20 text-[11px] font-semibold text-[var(--blue)] flex items-center justify-center gap-1">
+                              <Edit2 size={12} /> Edit
+                            </button>
+                          </Link>
+                          <Link href={`/admin/tournaments/${t.id}`}>
+                            <button className="w-full py-2 rounded-xl bg-[var(--blue-dim)] border border-[var(--blue)]/20 text-[11px] font-semibold text-[var(--blue)] flex items-center justify-center gap-1">
+                              <Settings2 size={12} /> Manage
+                            </button>
+                          </Link>
+                          <button
+                            onClick={() => handleDeleteTournament(t.id)}
+                            disabled={isPending}
+                            className="w-full py-2 rounded-xl bg-red-400/10 border border-red-400/20 flex items-center justify-center"
+                          >
+                            <Trash2 size={12} className="text-red-400" />
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })
+                )}
               </div>
             )}
 
@@ -486,5 +611,19 @@ export default function AdminPage() {
         )}
       </AnimatePresence>
     </div>
+  )
+}
+
+export default function AdminPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-[#050505] flex items-center justify-center">
+          <Loader2 className="w-6 h-6 animate-spin text-[var(--blue)]" />
+        </div>
+      }
+    >
+      <AdminPageInner />
+    </Suspense>
   )
 }

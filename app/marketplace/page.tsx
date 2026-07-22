@@ -3,7 +3,7 @@
 import Image from 'next/image'
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Search, Heart, Star, BadgeCheck, X, ShoppingCart, Filter, Plus, Camera, Upload, CheckCircle2 } from 'lucide-react'
+import { Search, Heart, Star, BadgeCheck, X, MessageCircle, Filter, Plus, Camera, Upload, CheckCircle2 } from 'lucide-react'
 import { PageShell } from '@/components/page-shell'
 import { LogoHeader } from '@/components/logo-header'
 import { marketplaceItems } from '@/lib/data'
@@ -16,6 +16,14 @@ type Item = typeof marketplaceItems[0]
 type TabType = 'buy' | 'sell'
 
 function ProductModal({ item, onClose }: { item: Item; onClose: () => void }) {
+  const contactSeller = () => {
+    const phone = item.seller.phone?.replace(/[^0-9]/g, '')
+    const message = `Hi ${item.seller.username}, I'm interested in your listing "${item.name}" (${formatNumber(item.price)} ${item.currency}) on E-Competition. Is it still available?`
+    if (phone) {
+      window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer')
+    }
+  }
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -53,20 +61,31 @@ function ProductModal({ item, onClose }: { item: Item; onClose: () => void }) {
 
         <p className="text-xs text-muted-foreground leading-relaxed mb-4">{item.description}</p>
 
-        <div className="glass rounded-xl p-3 flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 rounded-xl overflow-hidden border border-[var(--glass-border)]">
-            <Image src={item.seller.avatar} alt={item.seller.username} width={40} height={40} className="object-cover w-full h-full" />
-          </div>
-          <div className="flex-1">
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs font-bold text-white">{item.seller.username}</span>
-              {item.verified && <BadgeCheck size={13} className="text-[var(--blue)]" />}
+        {/* Seller + Contact (moved up for quick access) */}
+        <div className="glass rounded-xl p-3 mb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl overflow-hidden border border-[var(--glass-border)]">
+              <Image src={item.seller.avatar} alt={item.seller.username} width={40} height={40} className="object-cover w-full h-full" />
             </div>
-            <div className="flex items-center gap-1 mt-0.5">
-              <Star size={10} className="text-amber-400 fill-amber-400" />
-              <span className="text-[10px] text-muted-foreground">{item.seller.rating} - {item.seller.sales} sales</span>
+            <div className="flex-1">
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-bold text-white">{item.seller.username}</span>
+                {item.verified && <BadgeCheck size={13} className="text-[var(--blue)]" />}
+              </div>
+              <div className="flex items-center gap-1 mt-0.5">
+                <Star size={10} className="text-amber-400 fill-amber-400" />
+                <span className="text-[10px] text-muted-foreground">{item.seller.rating} - {item.seller.sales} sales</span>
+              </div>
             </div>
           </div>
+          <motion.button
+            whileTap={{ scale: 0.97 }}
+            onClick={contactSeller}
+            className="mt-3 w-full flex items-center justify-center gap-2 bg-[var(--blue)] text-[#050505] px-5 py-3 rounded-xl font-bold text-sm"
+          >
+            <MessageCircle size={16} />
+            Contact Seller
+          </motion.button>
         </div>
 
         <div className="flex items-center gap-3">
@@ -74,13 +93,6 @@ function ProductModal({ item, onClose }: { item: Item; onClose: () => void }) {
             <p className="text-[10px] text-muted-foreground">Price</p>
             <p className="text-2xl font-black text-white">{ formatNumber(item.price) } <span className="text-sm font-normal text-muted-foreground">{item.currency}</span></p>
           </div>
-          <motion.button
-            whileTap={{ scale: 0.95 }}
-            className="flex items-center gap-2 bg-[var(--blue)] text-[#050505] px-5 py-3 rounded-xl font-bold text-sm"
-          >
-            <ShoppingCart size={16} />
-            Contact Seller
-          </motion.button>
         </div>
       </motion.div>
     </motion.div>

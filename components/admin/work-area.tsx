@@ -19,6 +19,8 @@ import {
   Trophy,
   ShoppingBag,
   Briefcase,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react'
 import {
   getWorkEvents,
@@ -125,12 +127,30 @@ const CATEGORY_COLORS: Record<string, string> = {
   maintenance: '#ef4444',
 }
 
+const WEEKDAYS = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su']
+const MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+]
+
+/** Local YYYY-MM-DD (avoids UTC off-by-one from toISOString). */
+function toDateKey(d: Date) {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
 function CalendarTab() {
   const [events, setEvents] = useState<WorkEventRow[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [isPending, startTransition] = useTransition()
-  const [form, setForm] = useState({ title: '', eventDate: '', eventTime: '', category: 'general', notes: '' })
+
+  const today = new Date()
+  const [viewDate, setViewDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1))
+  const [selectedDate, setSelectedDate] = useState(toDateKey(today))
+  const [form, setForm] = useState({ title: '', eventTime: '', category: 'general', notes: '' })
 
   useEffect(() => {
     getWorkEvents().then((data) => {
@@ -139,12 +159,37 @@ function CalendarTab() {
     })
   }, [])
 
+  // Map of dateKey -> events on that day
+  const eventsByDate = events.reduce<Record<string, WorkEventRow[]>>((acc, e) => {
+    ;(acc[e.eventDate] ??= []).push(e)
+    return acc
+  }, {})
+
+  const year = viewDate.getFullYear()
+  const month = viewDate.getMonth()
+  // Days from Monday (getDay(): 0=Sun). Convert to Mon-first index.
+  const firstWeekday = (new Date(year, month, 1).getDay() + 6) % 7
+  const daysInMonth = new Date(year, month + 1, 0).getDate()
+  const cells: (number | null)[] = [
+    ...Array(firstWeekday).fill(null),
+    ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
+  ]
+  const todayKey = toDateKey(today)
+
+  const changeMonth = (delta: number) => {
+    setViewDate(new Date(year, month + delta, 1))
+  }
+
+  const selectedEvents = (eventsByDate[selectedDate] ?? []).sort((a, b) =>
+    (a.eventTime ?? '').localeCompare(b.eventTime ?? ''),
+  )
+
   const submit = () => {
-    if (!form.title.trim() || !form.eventDate) return
+    if (!form.title.trim() || !selectedDate) return
     startTransition(async () => {
-      const row = await createWorkEvent(form)
-      setEvents((prev) => [...prev, row as WorkEventRow].sort((a, b) => a.eventDate.localeCompare(b.eventDate)))
-      setForm({ title: '', eventDate: '', eventTime: '', category: 'general', notes: '' })
+      const row = await createWorkEvent({ ...form, eventDate: selectedDate })
+      setEvents((prev) => [...prev, row as WorkEventRow])
+      setForm({ title: '', eventTime: '', category: 'general', notes: '' })
       setShowForm(false)
     })
   }
@@ -156,17 +201,96 @@ function CalendarTab() {
     })
   }
 
-  return (
-    <div className="space-y-3">
-      <motion.button
-        whileTap={{ scale: 0.97 }}
-        onClick={() => setShowForm((s) => !s)}
-        className="w-full py-3 rounded-xl bg-[var(--blue)] text-[#050505] font-bold text-sm flex items-center justify-center gap-2"
-      >
-        <Plus size={16} />
-        New Event
-      </motion.button>
+  const selectedLabel = new Date(`${selectedDate}T00:00:00`).toLocaleDateString('en-GB', {
+    weekday: 'long', day: 'numeric', month: 'long',
+  })
 
+  return (
+    <div className="space-y-4">
+      {/* Month grid */}
+      <div className="glass rounded-2xl p-4">
+        <div className="flex items-center justify-between mb-4">
+          <button
+            onClick={() => changeMonth(-1)}
+            aria-label="Previous month"
+            className="w-8 h-8 rounded-lg glass flex items-center justify-center"
+          >
+            <ChevronLeft size={16} className="text-white" />
+          </button>
+          <p className="text-sm font-bold text-white">{MONTH_NAMES[month]} {year}</p>
+          <button
+            onClick={() => changeMonth(1)}
+            aria-label="Next month"
+            className="w-8 h-8 rounded-lg glass flex items-center justify-center"
+          >
+            <ChevronRight size={16} className="text-white" />
+          </button>
+        </div>
+
+        <div className="grid grid-cols-7 gap-1 mb-1">
+          {WEEKDAYS.map((d) => (
+            <div key={d} className="text-center text-[10px] font-semibold text-muted-foreground py-1">
+              {d}
+            </div>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-7 gap-1">
+          {cells.map((day, idx) => {
+            if (day === null) return <div key={`b-${idx}`} />
+            const key = toDateKey(new Date(year, month, day))
+            const dayEvents = eventsByDate[key] ?? []
+            const isSelected = key === selectedDate
+            const isToday = key === todayKey
+            return (
+              <button
+                key={key}
+                onClick={() => setSelectedDate(key)}
+                className={cn(
+                  'aspect-square rounded-lg flex flex-col items-center justify-center gap-1 text-[13px] font-semibold transition-colors relative',
+                  isSelected
+                    ? 'bg-[var(--blue)] text-[#050505]'
+                    : isToday
+                      ? 'bg-[var(--blue-dim)] text-white'
+                      : 'text-muted-foreground hover:bg-white/5',
+                )}
+              >
+                <span>{day}</span>
+                {dayEvents.length > 0 && (
+                  <span className="flex items-center gap-0.5 absolute bottom-1">
+                    {dayEvents.slice(0, 3).map((e, i) => (
+                      <span
+                        key={i}
+                        className="w-1 h-1 rounded-full"
+                        style={{
+                          background: isSelected
+                            ? '#050505'
+                            : CATEGORY_COLORS[e.category ?? 'general'] ?? 'var(--blue)',
+                        }}
+                      />
+                    ))}
+                  </span>
+                )}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Selected day header */}
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-bold text-white">{selectedLabel}</p>
+        <motion.button
+          whileTap={{ scale: 0.95 }}
+          onClick={() => setShowForm((s) => !s)}
+          className="flex items-center gap-1.5 bg-[var(--blue)] text-[#050505] px-3 py-2 rounded-xl font-bold text-xs"
+        >
+          <Plus size={14} />
+          New Event
+        </motion.button>
+      </div>
+
+      {/* Add-event form (pre-bound to selected date) */}
       <AnimatePresence>
         {showForm && (
           <motion.div
@@ -181,20 +305,12 @@ function CalendarTab() {
               placeholder="Event title"
               className="w-full bg-[var(--surface)] rounded-xl px-3 py-2.5 text-sm text-white placeholder:text-muted-foreground outline-none"
             />
-            <div className="flex gap-2">
-              <input
-                type="date"
-                value={form.eventDate}
-                onChange={(e) => setForm({ ...form, eventDate: e.target.value })}
-                className="flex-1 bg-[var(--surface)] rounded-xl px-3 py-2.5 text-sm text-white outline-none"
-              />
-              <input
-                type="time"
-                value={form.eventTime}
-                onChange={(e) => setForm({ ...form, eventTime: e.target.value })}
-                className="flex-1 bg-[var(--surface)] rounded-xl px-3 py-2.5 text-sm text-white outline-none"
-              />
-            </div>
+            <input
+              type="time"
+              value={form.eventTime}
+              onChange={(e) => setForm({ ...form, eventTime: e.target.value })}
+              className="w-full bg-[var(--surface)] rounded-xl px-3 py-2.5 text-sm text-white outline-none"
+            />
             <div className="flex gap-2 flex-wrap">
               {Object.keys(CATEGORY_COLORS).map((cat) => (
                 <button
@@ -227,13 +343,14 @@ function CalendarTab() {
         )}
       </AnimatePresence>
 
+      {/* Events for selected day */}
       {loading ? (
         <p className="text-center text-sm text-muted-foreground py-8">Loading…</p>
-      ) : events.length === 0 ? (
-        <p className="text-center text-sm text-muted-foreground py-8">No events scheduled yet.</p>
+      ) : selectedEvents.length === 0 ? (
+        <p className="text-center text-sm text-muted-foreground py-6">No events on this day.</p>
       ) : (
         <div className="space-y-2">
-          {events.map((e) => {
+          {selectedEvents.map((e) => {
             const color = CATEGORY_COLORS[e.category ?? 'general'] ?? 'var(--blue)'
             return (
               <div key={e.id} className="glass rounded-2xl p-3.5 flex items-center gap-3">
@@ -241,9 +358,7 @@ function CalendarTab() {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-bold text-white truncate">{e.title}</p>
                   <p className="text-[11px] text-muted-foreground">
-                    {new Date(e.eventDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
-                    {e.eventTime ? ` · ${e.eventTime}` : ''}
-                    {' · '}
+                    {e.eventTime ? `${e.eventTime} · ` : ''}
                     <span className="capitalize" style={{ color }}>{e.category}</span>
                   </p>
                   {e.notes && <p className="text-[11px] text-muted-foreground/80 mt-0.5 truncate">{e.notes}</p>}
