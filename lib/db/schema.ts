@@ -94,6 +94,24 @@ export const rentalBooking = pgTable('rental_booking', {
   updatedAt: timestamp('updatedAt').defaultNow(),
 })
 
+// --- Marketplace products (admin-managed) ----------------------------------
+
+export const product = pgTable('product', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  category: text('category').default('Consoles'),
+  price: integer('price').notNull(),
+  currency: text('currency').default('TL'),
+  condition: text('condition').default('New'),
+  description: text('description'),
+  image: text('image'),
+  contactPhone: text('contactPhone'),
+  available: boolean('available').default(true),
+  verified: boolean('verified').default(false),
+  createdAt: timestamp('createdAt').defaultNow(),
+  updatedAt: timestamp('updatedAt').defaultNow(),
+})
+
 // --- Admin work area tables ------------------------------------------------
 
 export const workMessage = pgTable('work_message', {

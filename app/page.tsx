@@ -4,11 +4,13 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Gamepad2, Trophy, ShoppingBag, ChevronRight, Zap, Users, Star, Loader2 } from 'lucide-react'
+import { Gamepad2, Trophy, ShoppingBag, ChevronRight, Zap, Users } from 'lucide-react'
 import { PageShell } from '@/components/page-shell'
 import { LogoHeader } from '@/components/logo-header'
-import { tournaments, marketplaceItems, currentUser } from '@/lib/data'
+import { currentUser } from '@/lib/data'
 import { getRentalConsoles } from '@/app/actions/rentals'
+import { getPublicTournaments } from '@/app/actions/tournaments'
+import { getAvailableProducts, type ProductRow } from '@/app/actions/products'
 import { cn, formatNumber } from '@/lib/utils'
 
 type RentalConsole = {
@@ -24,19 +26,32 @@ type RentalConsole = {
   features: string[] | null
 }
 
-const statusColors: Record<string, string> = {
-  live:     'bg-green-500',
-  upcoming: 'bg-[var(--blue)]',
-  full:     'bg-red-500',
+type Competition = {
+  id: string
+  name: string
+  game: string | null
+  platform: string | null
+  status: string | null
+  format: string | null
+  maxParticipants: number | null
+  prizePool: string | null
+  cover: string | null
+  participantCount: number
 }
-const statusLabels: Record<string, string> = {
-  live:     'LIVE',
-  upcoming: 'UPCOMING',
-  full:     'FULL',
-}
+
+// Map DB tournament status to the home badge. Only open + live are shown.
+const compBadge = (status: string | null) =>
+  status === 'in_progress'
+    ? { label: 'LIVE', text: 'text-green-400', border: 'border-green-500/40', bg: 'bg-green-500/20' }
+    : { label: 'OPEN', text: 'text-[var(--blue)]', border: 'border-[var(--blue)]/40', bg: 'bg-[var(--blue)]/20' }
+
+const formatLabel = (f: string | null) =>
+  f === 'double_elimination' ? 'Double Elim' : 'Single Elim'
 
 export default function HomePage() {
   const [consoles, setConsoles] = useState<RentalConsole[]>([])
+  const [competitions, setCompetitions] = useState<Competition[]>([])
+  const [products, setProducts] = useState<ProductRow[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -44,11 +59,20 @@ export default function HomePage() {
       setConsoles(data as RentalConsole[])
       setLoading(false)
     })
+    getPublicTournaments()
+      .then((data) => setCompetitions(data as Competition[]))
+      .catch(() => setCompetitions([]))
+    getAvailableProducts()
+      .then((data) => setProducts(data as ProductRow[]))
+      .catch(() => setProducts([]))
   }, [])
 
   const availableConsoles  = consoles.filter((c) => c.available)
-  const activeCompetitions = tournaments.filter((t) => t.status === 'live' || t.status === 'upcoming').slice(0, 3)
-  const featuredProducts   = marketplaceItems.slice(0, 4)
+  // Only admin-posted competitions that are open for registration or currently live.
+  const activeCompetitions = competitions
+    .filter((t) => t.status === 'registration' || t.status === 'in_progress')
+    .slice(0, 3)
+  const featuredProducts   = products.slice(0, 4)
 
   return (
     <PageShell>
@@ -160,58 +184,59 @@ export default function HomePage() {
           </div>
 
           <div className="space-y-3">
-            {activeCompetitions.map((tournament, idx) => (
-              <motion.div
-                key={tournament.id}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: idx * 0.1 }}
-              >
-                <Link href={`/tournaments/${tournament.id}`}>
-                  <div className="glass rounded-2xl overflow-hidden border border-[var(--glass-border)] hover:border-[var(--blue)]/30 transition-colors">
-                    <div className="flex gap-3 p-3">
-                      <div className="relative w-20 h-20 rounded-xl overflow-hidden bg-[var(--surface-2)] shrink-0">
-                        <Image
-                          src={tournament.cover}
-                          alt={tournament.name}
-                          fill
-                          className="object-cover"
-                        />
-                        <div className={cn(
-                          'absolute top-1 left-1 px-1.5 py-0.5 rounded-md',
-                          statusColors[tournament.status] + '/20',
-                          'border',
-                          statusColors[tournament.status] + '/40'
-                        )}>
-                          <span className={cn(
-                            'text-[8px] font-bold',
-                            tournament.status === 'live' ? 'text-green-400' :
-                            tournament.status === 'full' ? 'text-red-400' : 'text-[var(--blue)]'
-                          )}>
-                            {statusLabels[tournament.status]}
-                          </span>
+            {activeCompetitions.length === 0 ? (
+              <div className="glass rounded-2xl p-6 text-center border border-[var(--glass-border)]">
+                <Trophy size={24} className="text-muted-foreground mx-auto mb-2 opacity-40" />
+                <p className="text-xs text-muted-foreground">No competitions available right now.</p>
+              </div>
+            ) : (
+              activeCompetitions.map((tournament, idx) => {
+                const badge = compBadge(tournament.status)
+                return (
+                  <motion.div
+                    key={tournament.id}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: idx * 0.1 }}
+                  >
+                    <Link href={`/tournaments/${tournament.id}`}>
+                      <div className="glass rounded-2xl overflow-hidden border border-[var(--glass-border)] hover:border-[var(--blue)]/30 transition-colors">
+                        <div className="flex gap-3 p-3">
+                          <div className="relative w-20 h-20 rounded-xl overflow-hidden bg-[var(--surface-2)] shrink-0">
+                            <Image
+                              src={tournament.cover || '/placeholder.svg'}
+                              alt={tournament.name}
+                              fill
+                              className="object-cover"
+                            />
+                            <div className={cn('absolute top-1 left-1 px-1.5 py-0.5 rounded-md border', badge.bg, badge.border)}>
+                              <span className={cn('text-[8px] font-bold', badge.text)}>{badge.label}</span>
+                            </div>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-bold text-white truncate">{tournament.name}</p>
+                            <p className="text-[10px] text-muted-foreground mt-0.5">{tournament.game}</p>
+                            <div className="flex items-center gap-3 mt-2">
+                              {tournament.prizePool && (
+                                <div className="flex items-center gap-1">
+                                  <Zap size={10} className="text-[var(--blue)]" />
+                                  <span className="text-[10px] font-semibold text-[var(--blue)]">{tournament.prizePool}</span>
+                                </div>
+                              )}
+                              <div className="flex items-center gap-1">
+                                <Users size={10} className="text-muted-foreground" />
+                                <span className="text-[10px] text-muted-foreground">{tournament.participantCount}/{tournament.maxParticipants ?? '—'}</span>
+                              </div>
+                            </div>
+                            <p className="text-[10px] text-muted-foreground mt-1">{tournament.platform ?? 'PS5'} - {formatLabel(tournament.format)}</p>
+                          </div>
                         </div>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-bold text-white truncate">{tournament.name}</p>
-                        <p className="text-[10px] text-muted-foreground mt-0.5">{tournament.game}</p>
-                        <div className="flex items-center gap-3 mt-2">
-                          <div className="flex items-center gap-1">
-                            <Zap size={10} className="text-[var(--blue)]" />
-                            <span className="text-[10px] font-semibold text-[var(--blue)]">{tournament.prize}</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <Users size={10} className="text-muted-foreground" />
-                            <span className="text-[10px] text-muted-foreground">{tournament.registeredPlayers}/{tournament.maxPlayers}</span>
-                          </div>
-                        </div>
-                        <p className="text-[10px] text-muted-foreground mt-1">{tournament.platform} - {tournament.format}</p>
-                      </div>
-                    </div>
-                  </div>
-                </Link>
-              </motion.div>
-            ))}
+                    </Link>
+                  </motion.div>
+                )
+              })
+            )}
           </div>
         </section>
 
@@ -227,6 +252,12 @@ export default function HomePage() {
             </Link>
           </div>
 
+          {featuredProducts.length === 0 ? (
+            <div className="glass rounded-2xl p-6 text-center border border-[var(--glass-border)]">
+              <ShoppingBag size={24} className="text-muted-foreground mx-auto mb-2 opacity-40" />
+              <p className="text-xs text-muted-foreground">No products available right now.</p>
+            </div>
+          ) : (
           <div className="grid grid-cols-2 gap-3">
             {featuredProducts.map((item, idx) => (
               <motion.div
@@ -239,7 +270,7 @@ export default function HomePage() {
                   <div className="glass rounded-2xl p-3 border border-[var(--glass-border)] hover:border-[var(--blue)]/30 transition-colors">
                     <div className="relative h-24 mb-2 rounded-xl overflow-hidden bg-[var(--surface-2)]">
                       <Image
-                        src={item.image}
+                        src={item.image || '/placeholder.svg'}
                         alt={item.name}
                         fill
                         className="object-contain p-2"
@@ -261,6 +292,7 @@ export default function HomePage() {
               </motion.div>
             ))}
           </div>
+          )}
         </section>
       </div>
     </PageShell>

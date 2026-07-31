@@ -6,9 +6,11 @@ import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ArrowLeft, BarChart2, Trophy, Users, ShoppingBag, Plus, Edit2, Trash2, CheckCircle2, XCircle, Eye, Shield, QrCode, Gamepad2, Loader2, Calendar, Settings2, FileEdit, Zap, Phone, MapPin, Building2, Truck, Store } from 'lucide-react'
-import { leaderboard, marketplaceItems } from '@/lib/data'
+import { leaderboard } from '@/lib/data'
 import { AnimatedCounter } from '@/components/animated-counter'
 import { getRentalConsoles, toggleConsoleAvailability, deleteRentalConsole, getRentalBookings, updateBookingStatus } from '@/app/actions/rentals'
+import { getProducts, toggleProductAvailability, deleteProduct, type ProductRow } from '@/app/actions/products'
+import { ProductFormModal, type ProductFormValues } from '@/components/admin/product-form-modal'
 import { getAdminTournaments, deleteTournament } from '@/app/actions/tournaments'
 import { getViewerRole } from '@/app/actions/users'
 import { ConsoleFormModal, type ConsoleFormValues } from '@/components/admin/console-form-modal'
@@ -84,13 +86,15 @@ function AdminPageInner() {
   const [activeSection, setActiveSection] = useState(
     sections.includes(initialSection) ? initialSection : 'Overview',
   )
-  const [listingApprovals, setListingApprovals] = useState<Record<string, boolean | null>>({})
   const [consoles, setConsoles] = useState<RentalConsole[]>([])
   const [bookings, setBookings] = useState<RentalBooking[]>([])
+  const [products, setProducts] = useState<ProductRow[]>([])
   const [loading, setLoading] = useState(true)
   const [isPending, startTransition] = useTransition()
   const [formOpen, setFormOpen] = useState(false)
   const [editingConsole, setEditingConsole] = useState<ConsoleFormValues | null>(null)
+  const [productFormOpen, setProductFormOpen] = useState(false)
+  const [editingProduct, setEditingProduct] = useState<ProductFormValues | null>(null)
   const [isSuperAdmin, setIsSuperAdmin] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
   const [profileEdits, setProfileEdits] = useState<ProfileEditValues | null>(null)
@@ -125,6 +129,9 @@ function AdminPageInner() {
     getRentalBookings()
       .then((data) => setBookings(data as RentalBooking[]))
       .catch(() => setBookings([]))
+    getProducts()
+      .then((data) => setProducts(data as ProductRow[]))
+      .catch(() => setProducts([]))
     getViewerRole().then((role) => setIsSuperAdmin(role === 'super_admin'))
     loadTournaments()
   }, [])
@@ -147,8 +154,49 @@ function AdminPageInner() {
     })
   }
 
-  const approve = (id: string) => setListingApprovals((prev) => ({ ...prev, [id]: true }))
-  const reject = (id: string) => setListingApprovals((prev) => ({ ...prev, [id]: false }))
+  const handleToggleProduct = (id: string, currentAvailable: boolean | null) => {
+    startTransition(async () => {
+      const newAvailable = !currentAvailable
+      await toggleProductAvailability(id, newAvailable)
+      setProducts((prev) => prev.map((p) => (p.id === id ? { ...p, available: newAvailable } : p)))
+    })
+  }
+
+  const handleDeleteProduct = (id: string) => {
+    if (!confirm('Delete this product? This cannot be undone.')) return
+    startTransition(async () => {
+      await deleteProduct(id)
+      setProducts((prev) => prev.filter((p) => p.id !== id))
+    })
+  }
+
+  const openAddProduct = () => {
+    setEditingProduct(null)
+    setProductFormOpen(true)
+  }
+
+  const openEditProduct = (p: ProductRow) => {
+    setEditingProduct({
+      id: p.id,
+      name: p.name,
+      category: p.category ?? 'Consoles',
+      price: p.price,
+      condition: p.condition ?? 'New',
+      description: p.description ?? '',
+      image: p.image ?? '',
+      contactPhone: p.contactPhone ?? '',
+      available: p.available ?? true,
+      verified: p.verified ?? false,
+    })
+    setProductFormOpen(true)
+  }
+
+  const handleProductSaved = () => {
+    getProducts()
+      .then((data) => setProducts(data as ProductRow[]))
+      .catch(() => {})
+  }
+
   
   const handleToggleAvailability = (id: string, currentAvailable: boolean | null) => {
     startTransition(async () => {
@@ -261,7 +309,7 @@ function AdminPageInner() {
                   {[
                     { label: 'Total Players', value: 1248, icon: Users, color: 'text-[var(--blue)]', bg: 'bg-[var(--blue-dim)]' },
                     { label: 'Active Tournaments', value: tournamentStats.active, icon: Trophy, color: 'text-amber-400', bg: 'bg-amber-400/10' },
-                    { label: 'Marketplace Listings', value: marketplaceItems.length, icon: ShoppingBag, color: 'text-purple-400', bg: 'bg-purple-400/10' },
+                    { label: 'Marketplace Listings', value: products.length, icon: ShoppingBag, color: 'text-purple-400', bg: 'bg-purple-400/10' },
                     { label: 'Monthly Revenue', value: 124500, icon: BarChart2, color: 'text-emerald-400', bg: 'bg-emerald-400/10', prefix: '', suffix: ' TL' },
                   ].map((s) => (
                     <div key={s.label} className="glass rounded-2xl p-4">
@@ -691,50 +739,79 @@ function AdminPageInner() {
             {/* ──────────────────────────── LISTINGS ──────────────────────────── */}
             {activeSection === 'Listings' && (
               <div className="space-y-3">
-                <p className="text-xs text-muted-foreground mb-2">Pending marketplace approval</p>
-                {marketplaceItems.map((item) => {
-                  const status = listingApprovals[item.id]
-                  return (
+                <motion.button
+                  whileTap={{ scale: 0.97 }}
+                  onClick={openAddProduct}
+                  className="w-full py-3 rounded-xl bg-[var(--blue)] text-[#050505] font-bold text-sm flex items-center justify-center gap-2"
+                >
+                  <Plus size={16} />
+                  Add Product
+                </motion.button>
+
+                <p className="text-xs text-muted-foreground">
+                  Only products marked available are shown to clients on Home and the Marketplace.
+                </p>
+
+                {products.length === 0 ? (
+                  <div className="glass rounded-2xl p-6 text-center">
+                    <ShoppingBag size={26} className="text-muted-foreground mx-auto mb-2 opacity-40" />
+                    <p className="text-xs text-muted-foreground">No products yet. Add your first listing.</p>
+                  </div>
+                ) : (
+                  products.map((item) => (
                     <div key={item.id} className="glass rounded-2xl p-4">
                       <div className="flex items-start gap-3 mb-3">
                         <div className="relative w-14 h-14 rounded-xl overflow-hidden shrink-0 bg-[var(--surface-2)]">
-                          <Image src={item.image} alt={item.name} fill className="object-cover" />
+                          <Image src={item.image || '/placeholder.svg'} alt={item.name} fill className="object-cover" />
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-bold text-white truncate">{item.name}</p>
-                          <p className="text-xs text-muted-foreground">{item.condition} · { formatNumber(item.price) } {item.currency}</p>
-                          <p className="text-[10px] text-muted-foreground">Seller: {item.seller.username}</p>
+                          <p className="text-xs text-muted-foreground">{item.condition} · {formatNumber(item.price)} {item.currency}</p>
+                          <p className="text-[10px] text-muted-foreground">{item.category}</p>
                         </div>
+                        <span className={cn(
+                          'text-[10px] font-bold px-2 py-1 rounded-full shrink-0',
+                          item.available ? 'bg-emerald-400/10 text-emerald-400' : 'bg-[var(--surface-3)] text-muted-foreground'
+                        )}>
+                          {item.available ? 'Available' : 'Hidden'}
+                        </span>
                       </div>
 
-                      {status === undefined ? (
-                        <div className="flex gap-2">
-                          <motion.button
-                            whileTap={{ scale: 0.95 }}
-                            onClick={() => approve(item.id)}
-                            className="flex-1 py-2.5 rounded-xl bg-emerald-400/10 border border-emerald-400/30 text-xs font-bold text-emerald-400 flex items-center justify-center gap-1.5"
-                          >
-                            <CheckCircle2 size={13} /> Approve
-                          </motion.button>
-                          <motion.button
-                            whileTap={{ scale: 0.95 }}
-                            onClick={() => reject(item.id)}
-                            className="flex-1 py-2.5 rounded-xl bg-red-400/10 border border-red-400/30 text-xs font-bold text-red-400 flex items-center justify-center gap-1.5"
-                          >
-                            <XCircle size={13} /> Reject
-                          </motion.button>
-                        </div>
-                      ) : (
-                        <div className={cn(
-                          'py-2 rounded-xl text-xs font-bold text-center',
-                          status ? 'bg-emerald-400/10 text-emerald-400' : 'bg-red-400/10 text-red-400'
-                        )}>
-                          {status ? 'Approved' : 'Rejected'}
-                        </div>
-                      )}
+                      <div className="flex items-center gap-2">
+                        <motion.button
+                          whileTap={{ scale: 0.95 }}
+                          onClick={() => handleToggleProduct(item.id, item.available)}
+                          disabled={isPending}
+                          className={cn(
+                            'flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border',
+                            item.available
+                              ? 'bg-[var(--surface-3)] border-transparent text-muted-foreground'
+                              : 'bg-emerald-400/10 border-emerald-400/30 text-emerald-400'
+                          )}
+                        >
+                          {item.available ? <><XCircle size={13} /> Hide</> : <><CheckCircle2 size={13} /> Make available</>}
+                        </motion.button>
+                        <motion.button
+                          whileTap={{ scale: 0.95 }}
+                          onClick={() => openEditProduct(item)}
+                          className="w-10 h-10 rounded-xl glass flex items-center justify-center shrink-0"
+                          aria-label="Edit product"
+                        >
+                          <Edit2 size={15} className="text-white" />
+                        </motion.button>
+                        <motion.button
+                          whileTap={{ scale: 0.95 }}
+                          onClick={() => handleDeleteProduct(item.id)}
+                          disabled={isPending}
+                          className="w-10 h-10 rounded-xl glass flex items-center justify-center shrink-0"
+                          aria-label="Delete product"
+                        >
+                          <Trash2 size={15} className="text-red-400" />
+                        </motion.button>
+                      </div>
                     </div>
-                  )
-                })}
+                  ))
+                )}
               </div>
             )}
           </motion.div>
@@ -747,6 +824,16 @@ function AdminPageInner() {
             initial={editingConsole}
             onClose={() => setFormOpen(false)}
             onSaved={handleSaved}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {productFormOpen && (
+          <ProductFormModal
+            initial={editingProduct}
+            onClose={() => setProductFormOpen(false)}
+            onSaved={handleProductSaved}
           />
         )}
       </AnimatePresence>
