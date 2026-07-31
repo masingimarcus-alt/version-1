@@ -162,6 +162,24 @@ export async function updateBookingStatus(
     .update(rentalBooking)
     .set({ status, updatedAt: new Date() })
     .where(eq(rentalBooking.id, id))
+
+  // When a booking is validated, the console is rented out, so hide it from
+  // the rental catalog and Home by marking it unavailable.
+  if (status === 'confirmed') {
+    const [booking] = await db
+      .select({ consoleId: rentalBooking.consoleId })
+      .from(rentalBooking)
+      .where(eq(rentalBooking.id, id))
+    if (booking?.consoleId) {
+      await db
+        .update(rentalConsole)
+        .set({ available: false, updatedAt: new Date() })
+        .where(eq(rentalConsole.id, booking.consoleId))
+    }
+  }
+
   revalidatePath('/admin')
   revalidatePath('/profile')
+  revalidatePath('/rental')
+  revalidatePath('/')
 }

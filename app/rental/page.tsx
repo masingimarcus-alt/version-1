@@ -3,7 +3,7 @@
 import Image from 'next/image'
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Clock, Calendar, CheckCircle2, XCircle, Calculator, Minus, Plus, MapPin, Truck, Store, Loader2, Phone, Building2, Hash, User } from 'lucide-react'
+import { Calendar, CheckCircle2, XCircle, Calculator, Minus, Plus, MapPin, Truck, Store, Loader2, Phone, Building2, Hash, User } from 'lucide-react'
 import { PageShell } from '@/components/page-shell'
 import { getRentalConsoles, createRentalBooking } from '@/app/actions/rentals'
 import { cn, formatNumber } from '@/lib/utils'
@@ -22,8 +22,7 @@ type Console = {
 }
 
 function RentalModal({ console: c, onClose }: { console: Console; onClose: () => void }) {
-  const [hours, setHours] = useState(2)
-  const [unit, setUnit] = useState<'hours' | 'days'>('hours')
+  const [days, setDays] = useState(1)
   const [deliveryOption, setDeliveryOption] = useState<'pickup' | 'delivery'>('pickup')
   const [fullName, setFullName] = useState('')
   const [phone, setPhone] = useState('')
@@ -34,8 +33,7 @@ function RentalModal({ console: c, onClose }: { console: Console; onClose: () =>
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
-  const duration = unit === 'hours' ? hours : hours
-  const price = unit === 'hours' ? c.pricePerHour * duration : c.pricePerDay * duration
+  const price = c.pricePerDay * days
   const deliveryFee = 0
   const total = price + c.deposit + deliveryFee
   const features = c.features || []
@@ -55,8 +53,8 @@ function RentalModal({ console: c, onClose }: { console: Console; onClose: () =>
     try {
       await createRentalBooking({
         consoleId: c.id,
-        duration: hours,
-        unit,
+        duration: days,
+        unit: 'days',
         deliveryOption,
         deliveryAddress: deliveryOption === 'delivery' ? address.trim() : undefined,
         customerName: fullName.trim(),
@@ -90,13 +88,13 @@ function RentalModal({ console: c, onClose }: { console: Console; onClose: () =>
           <h3 className="text-xl font-black text-white mb-2">Booking Request Sent!</h3>
           <p className="text-xs text-muted-foreground leading-relaxed mb-6">
             Your <strong className="text-white">{c.name}</strong> request for{' '}
-            <strong className="text-white">{hours} {unit}</strong> was sent to our team for validation.{' '}
+            <strong className="text-white">{days} {days === 1 ? 'day' : 'days'}</strong> was sent to our team for validation.{' '}
             {deliveryOption === 'delivery' ? 'We will contact you to confirm delivery.' : 'We will contact you to confirm store pickup.'}
           </p>
           <div className="glass rounded-2xl p-4 text-left space-y-2.5 mb-6">
             {[
               { label: 'Console',   value: `${c.name} — ${c.model}` },
-              { label: 'Duration',  value: `${hours} ${unit}` },
+              { label: 'Duration',  value: `${days} ${days === 1 ? 'day' : 'days'}` },
               { label: 'Option',    value: deliveryOption === 'pickup' ? 'Store pickup' : 'Home delivery' },
               { label: 'Rental',    value: `${ formatNumber(price) } TL` },
               { label: 'Deposit',   value: `${ formatNumber(c.deposit) } TL` },
@@ -139,38 +137,22 @@ function RentalModal({ console: c, onClose }: { console: Console; onClose: () =>
         <h3 className="text-lg font-black text-white mb-1">{c.name}</h3>
         <p className="text-xs text-muted-foreground mb-5">{c.model} · {c.condition}</p>
 
-        {/* Unit toggle */}
-        <div className="flex gap-2 mb-5">
-          {(['hours', 'days'] as const).map((u) => (
-            <button
-              key={u}
-              onClick={() => { setUnit(u); setHours(u === 'hours' ? 2 : 1) }}
-              className={cn(
-                'flex-1 py-2.5 rounded-xl text-xs font-bold transition-all capitalize',
-                unit === u ? 'bg-[var(--blue)] text-[#050505]' : 'glass text-muted-foreground'
-              )}
-            >
-              {u}
-            </button>
-          ))}
-        </div>
-
-        {/* Duration picker */}
+        {/* Duration picker (days) */}
         <div className="glass rounded-xl p-4 mb-4">
           <div className="flex items-center justify-between">
-            <span className="text-sm font-bold text-white">Duration</span>
+            <span className="text-sm font-bold text-white">Duration (days)</span>
             <div className="flex items-center gap-4">
               <motion.button
                 whileTap={{ scale: 0.85 }}
-                onClick={() => setHours(Math.max(unit === 'hours' ? 1 : 1, hours - 1))}
+                onClick={() => setDays(Math.max(1, days - 1))}
                 className="w-9 h-9 rounded-xl bg-[var(--surface-3)] flex items-center justify-center"
               >
                 <Minus size={15} className="text-white" />
               </motion.button>
-              <span className="text-xl font-black text-white w-12 text-center">{hours}</span>
+              <span className="text-xl font-black text-white w-12 text-center">{days}</span>
               <motion.button
                 whileTap={{ scale: 0.85 }}
-                onClick={() => setHours(Math.min(unit === 'hours' ? 24 : 30, hours + 1))}
+                onClick={() => setDays(Math.min(30, days + 1))}
                 className="w-9 h-9 rounded-xl bg-[var(--blue-dim)] border border-[var(--blue)]/30 flex items-center justify-center"
               >
                 <Plus size={15} className="text-[var(--blue)]" />
@@ -182,7 +164,7 @@ function RentalModal({ console: c, onClose }: { console: Console; onClose: () =>
         {/* Summary */}
         <div className="glass rounded-xl p-4 mb-4 space-y-2">
           <div className="flex justify-between">
-            <span className="text-xs text-muted-foreground">Rental ({hours} {unit})</span>
+            <span className="text-xs text-muted-foreground">Rental ({days} {days === 1 ? 'day' : 'days'})</span>
             <span className="text-xs font-semibold text-white">{ formatNumber(price) } TL</span>
           </div>
           <div className="flex justify-between">
@@ -320,7 +302,7 @@ export default function RentalPage() {
     <PageShell>
       <div className="px-4 pt-14 pb-4">
         <h1 className="text-2xl font-black text-white mb-1">Console Rental</h1>
-        <p className="text-xs text-muted-foreground mb-6">Rent premium gaming consoles by the hour or day</p>
+        <p className="text-xs text-muted-foreground mb-6">Rent premium gaming consoles by the day</p>
 
         {loading ? (
           <div className="flex items-center justify-center py-24">
@@ -378,14 +360,7 @@ export default function RentalPage() {
                     </div>
 
                     {/* Pricing */}
-                    <div className="grid grid-cols-2 gap-2 mb-4">
-                      <div className="glass rounded-xl p-3">
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <Clock size={12} className="text-[var(--blue)]" />
-                          <span className="text-[10px] text-muted-foreground">Per Hour</span>
-                        </div>
-                        <p className="text-sm font-black text-white">{ formatNumber(c.pricePerHour) } <span className="text-[10px] font-normal text-muted-foreground">TL</span></p>
-                      </div>
+                    <div className="mb-4">
                       <div className="glass rounded-xl p-3">
                         <div className="flex items-center gap-1.5 mb-1">
                           <Calendar size={12} className="text-[var(--blue)]" />
