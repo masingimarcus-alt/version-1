@@ -5,7 +5,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ArrowLeft, BarChart2, Trophy, Users, ShoppingBag, Plus, Edit2, Trash2, CheckCircle2, XCircle, Eye, Shield, QrCode, Gamepad2, Loader2, Calendar, Settings2, FileEdit, Zap, Phone, MapPin, Building2, Truck, Store } from 'lucide-react'
+import { ArrowLeft, BarChart2, Trophy, Users, ShoppingBag, Plus, Edit2, Trash2, CheckCircle2, XCircle, Eye, Shield, QrCode, Gamepad2, Loader2, Calendar, Settings2, FileEdit, Zap, Phone, MapPin, Building2, Truck, Store, Bell } from 'lucide-react'
 import { leaderboard } from '@/lib/data'
 import { AnimatedCounter } from '@/components/animated-counter'
 import { getRentalConsoles, toggleConsoleAvailability, deleteRentalConsole, getRentalBookings, updateBookingStatus } from '@/app/actions/rentals'
@@ -262,6 +262,19 @@ function AdminPageInner() {
             </div>
             <p className="text-[10px] text-muted-foreground">Role: {roleLabel}</p>
           </div>
+          <motion.button
+            whileTap={{ scale: 0.9 }}
+            onClick={() => setActiveSection('Rentals')}
+            className="relative w-10 h-10 rounded-xl glass flex items-center justify-center"
+            aria-label={pendingBookings.length > 0 ? `${pendingBookings.length} new rental requests` : 'Notifications'}
+          >
+            <Bell size={17} className="text-white" />
+            {pendingBookings.length > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 flex items-center justify-center">
+                <span className="text-[10px] font-bold text-white leading-none">{pendingBookings.length}</span>
+              </span>
+            )}
+          </motion.button>
           <motion.button
             whileTap={{ scale: 0.95 }}
             onClick={() => setProfileOpen(true)}
