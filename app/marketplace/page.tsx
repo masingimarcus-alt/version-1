@@ -1,24 +1,24 @@
 'use client'
 
 import Image from 'next/image'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Search, Heart, Star, BadgeCheck, X, MessageCircle, Filter, Plus, Camera, Upload, CheckCircle2 } from 'lucide-react'
+import { Search, Heart, BadgeCheck, X, MessageCircle, Filter, Plus, Camera, Upload, CheckCircle2, Loader2, ShoppingBag } from 'lucide-react'
 import { PageShell } from '@/components/page-shell'
 import { LogoHeader } from '@/components/logo-header'
-import { marketplaceItems } from '@/lib/data'
+import { getAvailableProducts, type ProductRow } from '@/app/actions/products'
 import { cn, formatNumber } from '@/lib/utils'
 
 const categories = ['All', 'Consoles', 'Controllers', 'Games', 'Accessories']
 const conditions = ['New', 'Like New', 'Excellent', 'Good', 'Fair']
 
-type Item = typeof marketplaceItems[0]
+type Item = ProductRow
 type TabType = 'buy' | 'sell'
 
 function ProductModal({ item, onClose }: { item: Item; onClose: () => void }) {
   const contactSeller = () => {
-    const phone = item.seller.phone?.replace(/[^0-9]/g, '')
-    const message = `Hi ${item.seller.username}, I'm interested in your listing "${item.name}" (${formatNumber(item.price)} ${item.currency}) on E-Competition. Is it still available?`
+    const phone = item.contactPhone?.replace(/[^0-9]/g, '')
+    const message = `Hi, I'm interested in "${item.name}" (${formatNumber(item.price)} ${item.currency}) on E-Competition. Is it still available?`
     if (phone) {
       window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer')
     }
@@ -43,12 +43,15 @@ function ProductModal({ item, onClose }: { item: Item; onClose: () => void }) {
         <div className="w-10 h-1 rounded-full bg-[var(--surface-3)] mx-auto mb-4" />
 
         <div className="relative h-52 rounded-2xl overflow-hidden mb-4 bg-[var(--surface-2)]">
-          <Image src={item.image} alt={item.name} fill className="object-cover" />
+          <Image src={item.image || '/placeholder.svg'} alt={item.name} fill className="object-cover" />
         </div>
 
         <div className="flex items-start justify-between gap-2 mb-3">
           <div>
-            <h3 className="text-lg font-black text-white text-balance">{item.name}</h3>
+            <div className="flex items-center gap-1.5">
+              <h3 className="text-lg font-black text-white text-balance">{item.name}</h3>
+              {item.verified && <BadgeCheck size={16} className="text-[var(--blue)] shrink-0" />}
+            </div>
             <div className="flex items-center gap-2 mt-1">
               <span className="text-xs px-2 py-0.5 rounded-full bg-[var(--surface-3)] text-muted-foreground">{item.category}</span>
               <span className="text-xs px-2 py-0.5 rounded-full bg-[var(--blue-dim)] text-[var(--blue)]">{item.condition}</span>
@@ -59,34 +62,19 @@ function ProductModal({ item, onClose }: { item: Item; onClose: () => void }) {
           </button>
         </div>
 
-        <p className="text-xs text-muted-foreground leading-relaxed mb-4">{item.description}</p>
+        {item.description && <p className="text-xs text-muted-foreground leading-relaxed mb-4">{item.description}</p>}
 
-        {/* Seller + Contact (moved up for quick access) */}
-        <div className="glass rounded-xl p-3 mb-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl overflow-hidden border border-[var(--glass-border)]">
-              <Image src={item.seller.avatar} alt={item.seller.username} width={40} height={40} className="object-cover w-full h-full" />
-            </div>
-            <div className="flex-1">
-              <div className="flex items-center gap-1.5">
-                <span className="text-xs font-bold text-white">{item.seller.username}</span>
-                {item.verified && <BadgeCheck size={13} className="text-[var(--blue)]" />}
-              </div>
-              <div className="flex items-center gap-1 mt-0.5">
-                <Star size={10} className="text-amber-400 fill-amber-400" />
-                <span className="text-[10px] text-muted-foreground">{item.seller.rating} - {item.seller.sales} sales</span>
-              </div>
-            </div>
-          </div>
+        {/* Contact (up top for quick access) */}
+        {item.contactPhone && (
           <motion.button
             whileTap={{ scale: 0.97 }}
             onClick={contactSeller}
-            className="mt-3 w-full flex items-center justify-center gap-2 bg-[var(--blue)] text-[#050505] px-5 py-3 rounded-xl font-bold text-sm"
+            className="mb-4 w-full flex items-center justify-center gap-2 bg-[var(--blue)] text-[#050505] px-5 py-3 rounded-xl font-bold text-sm"
           >
             <MessageCircle size={16} />
             Contact Seller
           </motion.button>
-        </div>
+        )}
 
         <div className="flex items-center gap-3">
           <div className="flex-1">
@@ -257,11 +245,20 @@ export default function MarketplacePage() {
   const [activeTab, setActiveTab] = useState<TabType>('buy')
   const [activeCategory, setActiveCategory] = useState('All')
   const [search, setSearch] = useState('')
-  const [favorites, setFavorites] = useState<Set<string>>(new Set(['p2']))
+  const [favorites, setFavorites] = useState<Set<string>>(new Set())
   const [selectedItem, setSelectedItem] = useState<Item | null>(null)
   const [sellSuccess, setSellSuccess] = useState(false)
+  const [items, setItems] = useState<Item[]>([])
+  const [loading, setLoading] = useState(true)
 
-  const filtered = marketplaceItems.filter((item) => {
+  useEffect(() => {
+    getAvailableProducts()
+      .then((data) => setItems(data as Item[]))
+      .catch(() => setItems([]))
+      .finally(() => setLoading(false))
+  }, [])
+
+  const filtered = items.filter((item) => {
     const matchSearch = item.name.toLowerCase().includes(search.toLowerCase())
     const matchCat = activeCategory === 'All' || item.category === activeCategory
     return matchSearch && matchCat
@@ -362,6 +359,17 @@ export default function MarketplacePage() {
             </div>
 
             {/* Product grid */}
+            {loading ? (
+              <div className="flex items-center justify-center py-16">
+                <Loader2 size={22} className="text-[var(--blue)] animate-spin" />
+              </div>
+            ) : filtered.length === 0 ? (
+              <div className="px-4 py-16 flex flex-col items-center text-center">
+                <ShoppingBag size={30} className="text-muted-foreground opacity-40 mb-3" />
+                <p className="text-sm font-semibold text-white mb-1">No products available</p>
+                <p className="text-xs text-muted-foreground">Check back soon for new listings.</p>
+              </div>
+            ) : (
             <div className="px-4 grid grid-cols-2 gap-3 pb-6">
               <AnimatePresence mode="popLayout">
                 {filtered.map((item, i) => (
@@ -376,7 +384,7 @@ export default function MarketplacePage() {
                     onClick={() => setSelectedItem(item)}
                   >
                     <div className="relative h-36 bg-[var(--surface-2)]">
-                      <Image src={item.image} alt={item.name} fill className="object-cover" />
+                      <Image src={item.image || '/placeholder.svg'} alt={item.name} fill className="object-cover" />
                       <div className="absolute inset-0 bg-gradient-to-t from-[#0d0d0f]/60 to-transparent" />
 
                       <motion.button
@@ -398,8 +406,7 @@ export default function MarketplacePage() {
                     <div className="p-3">
                       <p className="text-xs font-bold text-white leading-tight mb-1 line-clamp-2">{item.name}</p>
                       <div className="flex items-center gap-1 mb-2">
-                        <Star size={9} className="text-amber-400 fill-amber-400" />
-                        <span className="text-[10px] text-muted-foreground">{item.seller.rating}</span>
+                        <span className="text-[10px] text-muted-foreground">{item.category}</span>
                         {item.verified && <BadgeCheck size={10} className="text-[var(--blue)] ml-0.5" />}
                       </div>
                       <p className="text-sm font-black text-white">{ formatNumber(item.price) }<span className="text-[10px] font-normal text-muted-foreground ml-1">{item.currency}</span></p>
@@ -408,6 +415,7 @@ export default function MarketplacePage() {
                 ))}
               </AnimatePresence>
             </div>
+            )}
           </motion.div>
         ) : (
           <motion.div
