@@ -48,6 +48,14 @@ const compBadge = (status: string | null) =>
 const formatLabel = (f: string | null) =>
   f === 'double_elimination' ? 'Double Elim' : 'Single Elim'
 
+// Treat empty values and the shared placeholder as "no image" so we fall back
+// to a branded generic picture instead of a broken/blank thumbnail.
+const isRealImage = (src: string | null) => !!src && src !== '/placeholder.svg'
+const consoleImage = (src: string | null) =>
+  isRealImage(src) ? (src as string) : '/images/generic-console.png'
+const competitionImage = (src: string | null) =>
+  isRealImage(src) ? (src as string) : '/images/generic-competition.png'
+
 export default function HomePage() {
   const [consoles, setConsoles] = useState<RentalConsole[]>([])
   const [competitions, setCompetitions] = useState<Competition[]>([])
@@ -146,14 +154,12 @@ export default function HomePage() {
                 <Link href="/rental">
                   <div className="glass rounded-2xl p-3 border border-[var(--glass-border)] hover:border-[var(--blue)]/30 transition-colors">
                     <div className="relative h-24 mb-2 rounded-xl overflow-hidden bg-[var(--surface-2)]">
-                      {console.image && (
-                        <Image
-                          src={console.image}
-                          alt={console.name}
-                          fill
-                          className="object-contain p-2"
-                        />
-                      )}
+                      <Image
+                        src={consoleImage(console.image)}
+                        alt={console.name}
+                        fill
+                        className="object-contain p-2"
+                      />
                       <div className="absolute top-1 right-1 px-1.5 py-0.5 rounded-md bg-green-500/20 border border-green-500/40">
                         <span className="text-[9px] font-bold text-green-400">AVAILABLE</span>
                       </div>
@@ -204,7 +210,7 @@ export default function HomePage() {
                         <div className="flex gap-3 p-3">
                           <div className="relative w-20 h-20 rounded-xl overflow-hidden bg-[var(--surface-2)] shrink-0">
                             <Image
-                              src={tournament.cover || '/placeholder.svg'}
+                              src={competitionImage(tournament.cover)}
                               alt={tournament.name}
                               fill
                               className="object-cover"
