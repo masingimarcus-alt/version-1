@@ -3,9 +3,9 @@
 import Image from 'next/image'
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Clock, Calendar, CheckCircle2, XCircle, Calculator, Minus, Plus, MapPin, Truck, Store, Loader2 } from 'lucide-react'
+import { Clock, Calendar, CheckCircle2, XCircle, Calculator, Minus, Plus, MapPin, Truck, Store, Loader2, Phone, Building2, Hash, User } from 'lucide-react'
 import { PageShell } from '@/components/page-shell'
-import { getRentalConsoles } from '@/app/actions/rentals'
+import { getRentalConsoles, createRentalBooking } from '@/app/actions/rentals'
 import { cn, formatNumber } from '@/lib/utils'
 
 type Console = {
@@ -25,8 +25,14 @@ function RentalModal({ console: c, onClose }: { console: Console; onClose: () =>
   const [hours, setHours] = useState(2)
   const [unit, setUnit] = useState<'hours' | 'days'>('hours')
   const [deliveryOption, setDeliveryOption] = useState<'pickup' | 'delivery'>('pickup')
+  const [fullName, setFullName] = useState('')
+  const [phone, setPhone] = useState('')
   const [address, setAddress] = useState('')
+  const [building, setBuilding] = useState('')
+  const [apt, setApt] = useState('')
   const [booked, setBooked] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState('')
 
   const duration = unit === 'hours' ? hours : hours
   const price = unit === 'hours' ? c.pricePerHour * duration : c.pricePerDay * duration
@@ -34,11 +40,45 @@ function RentalModal({ console: c, onClose }: { console: Console; onClose: () =>
   const total = price + c.deposit + deliveryFee
   const features = c.features || []
 
+  // Contact details are always required so the admin can validate the booking.
+  // Delivery bookings additionally require the full address, building, and apt.
+  const contactValid =
+    fullName.trim() !== '' &&
+    phone.trim() !== '' &&
+    (deliveryOption === 'pickup' ||
+      (address.trim() !== '' && building.trim() !== '' && apt.trim() !== ''))
+
+  const handleBook = async () => {
+    if (!contactValid || submitting) return
+    setSubmitting(true)
+    setError('')
+    try {
+      await createRentalBooking({
+        consoleId: c.id,
+        duration: hours,
+        unit,
+        deliveryOption,
+        deliveryAddress: deliveryOption === 'delivery' ? address.trim() : undefined,
+        customerName: fullName.trim(),
+        phone: phone.trim(),
+        buildingName: deliveryOption === 'delivery' ? building.trim() : undefined,
+        aptNumber: deliveryOption === 'delivery' ? apt.trim() : undefined,
+        totalPrice: total,
+      })
+      setBooked(true)
+    } catch (err) {
+      console.log('[v0] booking error:', err)
+      setError('Could not submit your booking. Please sign in and try again.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   if (booked) {
     return (
       <motion.div
         initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-        className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-end"
+        className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-sm flex items-end"
       >
         <motion.div
           initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
@@ -47,11 +87,11 @@ function RentalModal({ console: c, onClose }: { console: Console; onClose: () =>
           onClick={(e) => e.stopPropagation()}
         >
           <CheckCircle2 size={52} className="text-emerald-400 mx-auto mb-4" />
-          <h3 className="text-xl font-black text-white mb-2">Booking Confirmed!</h3>
+          <h3 className="text-xl font-black text-white mb-2">Booking Request Sent!</h3>
           <p className="text-xs text-muted-foreground leading-relaxed mb-6">
-            Your <strong className="text-white">{c.name}</strong> rental has been confirmed for{' '}
-            <strong className="text-white">{hours} {unit}</strong>.{' '}
-            {deliveryOption === 'delivery' ? 'It will be delivered to your address.' : 'Please pick it up at our store.'}
+            Your <strong className="text-white">{c.name}</strong> request for{' '}
+            <strong className="text-white">{hours} {unit}</strong> was sent to our team for validation.{' '}
+            {deliveryOption === 'delivery' ? 'We will contact you to confirm delivery.' : 'We will contact you to confirm store pickup.'}
           </p>
           <div className="glass rounded-2xl p-4 text-left space-y-2.5 mb-6">
             {[
@@ -83,7 +123,7 @@ function RentalModal({ console: c, onClose }: { console: Console; onClose: () =>
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-end"
+      className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-sm flex items-end"
       onClick={onClose}
     >
       <motion.div
@@ -91,9 +131,10 @@ function RentalModal({ console: c, onClose }: { console: Console; onClose: () =>
         animate={{ y: 0 }}
         exit={{ y: '100%' }}
         transition={{ type: 'spring', damping: 28, stiffness: 280 }}
-        className="w-full glass border-t border-[var(--glass-border)] rounded-t-3xl p-5 pb-10 max-h-[90vh] overflow-y-auto"
+        className="w-full glass border-t border-[var(--glass-border)] rounded-t-3xl max-h-[90vh] flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
+        <div className="flex-1 overflow-y-auto px-5 pt-5">
         <div className="w-10 h-1 rounded-full bg-[var(--surface-3)] mx-auto mb-5" />
         <h3 className="text-lg font-black text-white mb-1">{c.name}</h3>
         <p className="text-xs text-muted-foreground mb-5">{c.model} · {c.condition}</p>
@@ -185,32 +226,79 @@ function RentalModal({ console: c, onClose }: { console: Console; onClose: () =>
           ))}
         </div>
 
-        {/* Address (delivery only) */}
+        {/* Contact details — required so admin can validate the booking */}
+        <p className="text-xs font-bold text-white mb-2">Your Details</p>
+        <div className="space-y-2.5 mb-4">
+          <div className="relative">
+            <User size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <input type="text" placeholder="Full name"
+              value={fullName} onChange={(e) => setFullName(e.target.value)}
+              className="w-full glass rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder:text-muted-foreground focus:outline-none border border-transparent focus:border-[var(--blue)]/50 transition-colors"
+            />
+          </div>
+          <div className="relative">
+            <Phone size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <input type="tel" inputMode="tel" placeholder="Phone number"
+              value={phone} onChange={(e) => setPhone(e.target.value)}
+              className="w-full glass rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder:text-muted-foreground focus:outline-none border border-transparent focus:border-[var(--blue)]/50 transition-colors"
+            />
+          </div>
+        </div>
+
+        {/* Delivery address (delivery only) */}
         {deliveryOption === 'delivery' && (
           <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="mb-4">
             <p className="text-xs font-bold text-white mb-2">Delivery Address</p>
-            <div className="relative">
-              <MapPin size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <input type="text" placeholder="Enter your full address"
-                value={address} onChange={(e) => setAddress(e.target.value)}
-                className="w-full glass rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder:text-muted-foreground focus:outline-none border border-transparent focus:border-[var(--blue)]/50 transition-colors"
-              />
+            <div className="space-y-2.5">
+              <div className="relative">
+                <MapPin size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <input type="text" placeholder="Full address (street, area, city)"
+                  value={address} onChange={(e) => setAddress(e.target.value)}
+                  className="w-full glass rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder:text-muted-foreground focus:outline-none border border-transparent focus:border-[var(--blue)]/50 transition-colors"
+                />
+              </div>
+              <div className="flex gap-2.5">
+                <div className="relative flex-1">
+                  <Building2 size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  <input type="text" placeholder="Building name"
+                    value={building} onChange={(e) => setBuilding(e.target.value)}
+                    className="w-full glass rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder:text-muted-foreground focus:outline-none border border-transparent focus:border-[var(--blue)]/50 transition-colors"
+                  />
+                </div>
+                <div className="relative w-28">
+                  <Hash size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  <input type="text" placeholder="Apt no."
+                    value={apt} onChange={(e) => setApt(e.target.value)}
+                    className="w-full glass rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder:text-muted-foreground focus:outline-none border border-transparent focus:border-[var(--blue)]/50 transition-colors"
+                  />
+                </div>
+              </div>
             </div>
           </motion.div>
         )}
 
+        {error && <p className="text-xs text-red-400 mb-3 text-center">{error}</p>}
+      </div>
+
+      {/* Fixed action bar — always visible, large and easy to press */}
+      <div className="shrink-0 px-5 pt-3 pb-8 border-t border-[var(--glass-border)] bg-[var(--surface)]/40">
         <motion.button
-          whileTap={{ scale: 0.97 }}
-          onClick={() => setBooked(true)}
-          disabled={deliveryOption === 'delivery' && !address.trim()}
-          className={cn('w-full py-4 rounded-2xl font-bold text-sm transition-all',
-            deliveryOption === 'pickup' || address.trim()
+          whileTap={{ scale: 0.98 }}
+          onClick={handleBook}
+          disabled={!contactValid || submitting}
+          className={cn('w-full py-4 rounded-2xl font-black text-base flex items-center justify-center gap-2 transition-all',
+            contactValid && !submitting
               ? 'bg-[var(--blue)] text-[#050505] glow-blue'
               : 'bg-[var(--surface-3)] text-muted-foreground cursor-not-allowed'
           )}
         >
-          Book Now
+          {submitting ? (
+            <><Loader2 size={18} className="animate-spin" /> Booking…</>
+          ) : (
+            <>Book Now · {formatNumber(total)} TL</>
+          )}
         </motion.button>
+      </div>
       </motion.div>
     </motion.div>
   )

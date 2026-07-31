@@ -3,7 +3,7 @@
 import { auth } from '@/lib/auth'
 import { requireAdmin } from '@/lib/auth-server'
 import { db } from '@/lib/db'
-import { rentalConsole, rentalBooking } from '@/lib/db/schema'
+import { rentalConsole, rentalBooking, user } from '@/lib/db/schema'
 import { eq, desc } from 'drizzle-orm'
 import { headers } from 'next/headers'
 import { revalidatePath } from 'next/cache'
@@ -90,6 +90,10 @@ export async function createRentalBooking(data: {
   unit: string
   deliveryOption: string
   deliveryAddress?: string
+  customerName?: string
+  phone?: string
+  buildingName?: string
+  aptNumber?: string
   totalPrice: number
 }) {
   const userId = await getUserId()
@@ -97,9 +101,13 @@ export async function createRentalBooking(data: {
   await db.insert(rentalBooking).values({
     id,
     userId,
+    status: 'pending',
     ...data,
   })
+  // Surface the new booking request in the admin dashboard.
   revalidatePath('/profile')
+  revalidatePath('/admin')
+  return { id }
 }
 
 export async function getUserBookings() {
@@ -109,4 +117,51 @@ export async function getUserBookings() {
     .from(rentalBooking)
     .where(eq(rentalBooking.userId, userId))
     .orderBy(desc(rentalBooking.createdAt))
+}
+
+// --- Admin Booking Review Actions ---
+
+/**
+ * Returns every rental booking joined with the console and the customer who
+ * placed it, so the admin dashboard can validate incoming requests.
+ */
+export async function getRentalBookings() {
+  await requireAdmin()
+  return db
+    .select({
+      id: rentalBooking.id,
+      duration: rentalBooking.duration,
+      unit: rentalBooking.unit,
+      deliveryOption: rentalBooking.deliveryOption,
+      deliveryAddress: rentalBooking.deliveryAddress,
+      customerName: rentalBooking.customerName,
+      phone: rentalBooking.phone,
+      buildingName: rentalBooking.buildingName,
+      aptNumber: rentalBooking.aptNumber,
+      totalPrice: rentalBooking.totalPrice,
+      status: rentalBooking.status,
+      createdAt: rentalBooking.createdAt,
+      consoleName: rentalConsole.name,
+      consoleModel: rentalConsole.model,
+      consoleImage: rentalConsole.image,
+      accountName: user.name,
+      accountEmail: user.email,
+    })
+    .from(rentalBooking)
+    .leftJoin(rentalConsole, eq(rentalBooking.consoleId, rentalConsole.id))
+    .leftJoin(user, eq(rentalBooking.userId, user.id))
+    .orderBy(desc(rentalBooking.createdAt))
+}
+
+export async function updateBookingStatus(
+  id: string,
+  status: 'pending' | 'confirmed' | 'rejected',
+) {
+  await requireAdmin()
+  await db
+    .update(rentalBooking)
+    .set({ status, updatedAt: new Date() })
+    .where(eq(rentalBooking.id, id))
+  revalidatePath('/admin')
+  revalidatePath('/profile')
 }
