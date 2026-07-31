@@ -36,7 +36,7 @@ function RentalModal({ console: c, onClose }: { console: Console; onClose: () =>
 
   const duration = unit === 'hours' ? hours : hours
   const price = unit === 'hours' ? c.pricePerHour * duration : c.pricePerDay * duration
-  const deliveryFee = deliveryOption === 'delivery' ? 500 : 0
+  const deliveryFee = 0
   const total = price + c.deposit + deliveryFee
   const features = c.features || []
 
@@ -192,7 +192,7 @@ function RentalModal({ console: c, onClose }: { console: Console; onClose: () =>
           {deliveryOption === 'delivery' && (
             <div className="flex justify-between">
               <span className="text-xs text-muted-foreground">Delivery fee</span>
-              <span className="text-xs font-semibold text-white">500 TL</span>
+              <span className="text-xs font-semibold text-emerald-400">Free</span>
             </div>
           )}
           <div className="h-px bg-[var(--glass-border)]" />
@@ -207,7 +207,7 @@ function RentalModal({ console: c, onClose }: { console: Console; onClose: () =>
         <div className="grid grid-cols-2 gap-2 mb-4">
           {([
             { value: 'pickup',   icon: Store, label: 'Store Pickup', sub: 'No delivery fee' },
-            { value: 'delivery', icon: Truck, label: 'Home Delivery', sub: '+500 TL' },
+            { value: 'delivery', icon: Truck, label: 'Home Delivery', sub: 'Free delivery' },
           ] as const).map(({ value, icon: Icon, label, sub }) => (
             <motion.button key={value} type="button" whileTap={{ scale: 0.95 }}
               onClick={() => setDeliveryOption(value)}
